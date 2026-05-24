@@ -40,9 +40,21 @@ resource "aws_dynamodb_table" "appointments" {
     type = "S"
   }
 
+  attribute {
+    name = "statusKey"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "clientEmail-date-index"
     hash_key        = "clientEmail"
+    range_key       = "preferredDate"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "status-date-index"
+    hash_key        = "statusKey"
     range_key       = "preferredDate"
     projection_type = "ALL"
   }
@@ -107,7 +119,7 @@ resource "aws_dynamodb_table" "reviews" {
   }
 
   attribute {
-    name = "status"
+    name = "approvedKey"
     type = "S"
   }
 
@@ -117,8 +129,8 @@ resource "aws_dynamodb_table" "reviews" {
   }
 
   global_secondary_index {
-    name            = "status-date-index"
-    hash_key        = "status"
+    name            = "approved-date-index"
+    hash_key        = "approvedKey"
     range_key       = "createdAt"
     projection_type = "ALL"
   }
@@ -126,6 +138,11 @@ resource "aws_dynamodb_table" "reviews" {
   server_side_encryption {
     enabled     = true
     kms_key_arn = aws_kms_key.data.arn
+  }
+
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
   }
 
   point_in_time_recovery {

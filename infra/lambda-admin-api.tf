@@ -16,7 +16,7 @@ module "admin_api" {
 
   environment_variables = {
     LOG_LEVEL               = var.log_level
-    ENV                     = var.env
+    ENVIRONMENT             = var.env
     ALLOWED_ORIGIN          = var.allowed_origin
     TABLE_SERVICES          = aws_dynamodb_table.services.name
     TABLE_APPOINTMENTS      = aws_dynamodb_table.appointments.name
@@ -31,7 +31,8 @@ module "admin_api" {
     CLOUDFRONT_DIST_ID      = aws_cloudfront_distribution.frontend.id
     JWKS_URL                = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.this.id}/.well-known/jwks.json"
     SES_SENDER_EMAIL        = var.ses_sender_email
-    ADMIN_ALERT_EMAIL       = var.ses_sender_email
+    ADMIN_ALERT_EMAIL       = var.admin_alert_email
+    KMS_KEY_ID              = aws_kms_key.data.arn
     CDN_BASE_URL            = "https://cdn.${var.domain_name}"
   }
 
@@ -41,6 +42,11 @@ module "admin_api" {
       effect    = "Allow"
       actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"]
       resources = concat(local.dynamodb_table_arns, local.dynamodb_index_arns)
+    }
+    kms_decrypt_pii = {
+      effect    = "Allow"
+      actions   = ["kms:Decrypt"]
+      resources = [aws_kms_key.data.arn]
     }
     s3_objects = {
       effect    = "Allow"

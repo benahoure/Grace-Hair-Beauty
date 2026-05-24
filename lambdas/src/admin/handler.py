@@ -213,7 +213,7 @@ def update_appointment(event: dict, admin_user_id: str) -> dict:
         updated = update_item(
             get_config().table_appointments,
             {"appointmentId": appointment_id},
-            {"status": body.status, "adminNote": body.adminNote, "updatedAt": now},
+            {"status": body.status, "statusKey": body.status, "adminNote": body.adminNote, "updatedAt": now},
         )
     except NotFoundError:
         return not_found("Appointment not found.")

@@ -76,6 +76,11 @@ variable "ses_sender_email" {
   type        = string
 }
 
+variable "admin_alert_email" {
+  description = "Monitored business inbox that receives appointment and contact notifications."
+  type        = string
+}
+
 variable "allowed_origin" {
   description = "Allowed browser origin for CORS."
   type        = string

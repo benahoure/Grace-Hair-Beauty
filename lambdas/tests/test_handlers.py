@@ -217,6 +217,45 @@ def test_admin_api_router_delegates_to_existing_admin_handler(monkeypatch, lambd
     assert captured["rawPath"] == "/admin/appointments"
 
 
+def test_admin_appointment_update_keeps_status_index_key(monkeypatch, lambda_context) -> None:
+    from admin import handler
+
+    captured = {}
+    monkeypatch.setattr(handler, "require_admin", lambda event: "admin-1")
+    monkeypatch.setattr(handler, "get_item", lambda *args, **kwargs: {"appointmentId": "appt-1"})
+    monkeypatch.setattr(handler, "decrypt_pii", lambda value: value)
+    monkeypatch.setattr(handler, "audit", lambda *args, **kwargs: None)
+
+    def fake_update_item(table, key, updates):
+        captured["updates"] = updates
+        return {
+            "appointmentId": key["appointmentId"],
+            "status": updates["status"],
+            "statusKey": updates["statusKey"],
+            "clientEmail": "local:v1:test",
+            "clientPhone": "local:v1:test",
+        }
+
+    monkeypatch.setattr(handler, "update_item", fake_update_item)
+
+    response = handler.lambda_handler(
+        {
+            "rawPath": "/admin/appointments/appt-1",
+            "pathParameters": {"appointmentId": "appt-1"},
+            "requestContext": {
+                "http": {"method": "PATCH"},
+                "authorizer": {"jwt": {"claims": {"sub": "admin-1", "cognito:groups": ["admins"]}}},
+            },
+            "body": json.dumps({"status": "confirmed"}),
+        },
+        lambda_context,
+    )
+
+    assert response["statusCode"] == 200
+    assert captured["updates"]["status"] == "confirmed"
+    assert captured["updates"]["statusKey"] == "confirmed"
+
+
 def test_admin_routes_include_existing_handler_functionality() -> None:
     locals_tf = (Path(__file__).resolve().parents[2] / "infra" / "locals.tf").read_text()
 

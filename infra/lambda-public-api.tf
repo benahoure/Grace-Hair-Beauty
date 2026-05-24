@@ -16,7 +16,7 @@ module "public_api" {
 
   environment_variables = {
     LOG_LEVEL               = var.log_level
-    ENV                     = var.env
+    ENVIRONMENT             = var.env
     ALLOWED_ORIGIN          = var.allowed_origin
     TABLE_SERVICES          = aws_dynamodb_table.services.name
     TABLE_PORTFOLIO         = aws_dynamodb_table.portfolio.name
@@ -27,7 +27,8 @@ module "public_api" {
     TABLE_AUDIT_LOG         = aws_dynamodb_table.admin_audit_log.name
     TABLE_IDEMPOTENCY       = aws_dynamodb_table.idempotency.name
     SES_SENDER_EMAIL        = var.ses_sender_email
-    ADMIN_ALERT_EMAIL       = var.ses_sender_email
+    ADMIN_ALERT_EMAIL       = var.admin_alert_email
+    KMS_KEY_ID              = aws_kms_key.data.arn
     CDN_BASE_URL            = "https://cdn.${var.domain_name}"
   }
 
@@ -44,8 +45,14 @@ module "public_api" {
       resources = [
         aws_dynamodb_table.appointments.arn,
         aws_dynamodb_table.contact_messages.arn,
+        aws_dynamodb_table.reviews.arn,
         aws_dynamodb_table.admin_audit_log.arn,
       ]
+    }
+    kms_encrypt_pii = {
+      effect    = "Allow"
+      actions   = ["kms:Encrypt"]
+      resources = [aws_kms_key.data.arn]
     }
     dynamo_idempotency = {
       effect    = "Allow"
