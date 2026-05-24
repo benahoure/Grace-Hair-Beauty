@@ -45,6 +45,7 @@ locals {
     "GET /business-settings",
     "POST /appointments",
     "POST /contact",
+    "POST /reviews",
   ])
 
   admin_routes = toset([
@@ -54,11 +55,15 @@ locals {
     "DELETE /admin/services/{serviceId}",
     "GET /admin/portfolio",
     "POST /admin/portfolio",
+    "PATCH /admin/portfolio/{styleId}",
     "DELETE /admin/portfolio/{styleId}",
     "GET /admin/reviews",
+    "POST /admin/reviews",
     "PATCH /admin/reviews/{reviewId}",
+    "DELETE /admin/reviews/{reviewId}",
     "GET /admin/appointments",
     "PATCH /admin/appointments/{appointmentId}",
+    "GET /admin/contact-messages",
     "GET /admin/business-settings",
     "PATCH /admin/business-settings",
     "GET /admin/audit-log",

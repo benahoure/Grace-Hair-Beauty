@@ -18,21 +18,23 @@ def create_contact_message(request: ContactRequest) -> dict:
         {
             "messageId": message_id,
             "name": request.name,
-            "email": encrypt_pii(str(request.email)),
+            "email": encrypt_pii(str(request.email)) if request.email else None,
             "phone": encrypt_pii(request.phone),
             "message": request.message,
             "services": request.services,
+            "inspirationPhotoName": request.inspirationPhotoName,
             "read": False,
             "readKey": "false",
             "createdAt": now,
             "expiresAt": ttl_days(365),
         },
     )
-    best_effort_send_email(
-        to_address=str(request.email),
-        subject="Grace Hair Beauty received your message",
-        text_body="Thanks for reaching out to Grace Hair Beauty. We will respond within 1 business day.",
-    )
+    if request.email:
+        best_effort_send_email(
+            to_address=str(request.email),
+            subject="Grace Hair Beauty received your message",
+            text_body="Thanks for reaching out to Grace Hair Beauty. We will respond within 1 business day.",
+        )
     notify_admin(
         "New Grace Hair Beauty contact message",
         f"New message from {request.name}. Services of interest: {services_text}.",

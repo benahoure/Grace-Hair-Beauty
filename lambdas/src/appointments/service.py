@@ -34,7 +34,17 @@ def create_appointment(request: AppointmentRequest) -> dict:
         "createdAt": now,
         "updatedAt": now,
     }
+    if request.portfolioStyleId:
+        item["portfolioStyleId"] = request.portfolioStyleId
+
     put_item(config.table_appointments, item)
+    audit_detail = {
+        "source": "public_booking",
+        "serviceId": request.serviceId,
+    }
+    if request.portfolioStyleId:
+        audit_detail["portfolioStyleId"] = request.portfolioStyleId
+
     put_item(
         config.table_audit_log,
         {
@@ -43,7 +53,7 @@ def create_appointment(request: AppointmentRequest) -> dict:
             "action": "appointment.created",
             "resourceType": "appointment",
             "resourceId": appointment_id,
-            "detail": {"source": "public_booking", "serviceId": request.serviceId},
+            "detail": audit_detail,
             "createdAt": now,
             "expiresAt": ttl_days(365),
         },

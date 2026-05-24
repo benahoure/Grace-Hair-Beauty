@@ -23,15 +23,21 @@ Repeat for `prod` with `-var-file=env/prod.tfvars`. Production should be applied
 
 ## 4. Backend
 
-Build a single Lambda artifact from `lambdas`:
+Build the Lambda artifacts expected by Terraform:
 
 ```bash
+cd lambdas
 make build
-cd dist
-zip -r ../lambda.zip .
 ```
 
-Upload through `deploy-backend.yml` or update functions with the AWS CLI.
+This creates:
+
+- `lambdas/dist/public-api.zip`
+- `lambdas/dist/admin-api.zip`
+
+Terraform uses these local packages for the public and admin API Lambda functions.
+The build installs dependency wheels for Python 3.13 on Lambda arm64 by default. Override `LAMBDA_PYTHON_VERSION`
+or `LAMBDA_PLATFORM` only if the Terraform runtime or architecture changes.
 
 ## 5. Seed Data
 

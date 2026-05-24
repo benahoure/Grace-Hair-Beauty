@@ -10,6 +10,7 @@ from common.validators import HtmlStrippingModelMixin, normalize_us_phone
 
 class AppointmentRequest(HtmlStrippingModelMixin, BaseModel):
     serviceId: str = Field(min_length=1, max_length=80)
+    portfolioStyleId: str | None = Field(default=None, max_length=120)
     clientName: str = Field(min_length=2, max_length=100)
     clientEmail: EmailStr
     clientPhone: str = Field(min_length=7, max_length=20)
