@@ -1,0 +1,253 @@
+import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
+
+import { useReducedMotion } from '../../hooks/useReducedMotion'
+
+interface HeroAction {
+  label: string
+  to: string
+  variant?: 'gold' | 'outline'
+}
+
+interface HeroImage {
+  src: string
+  alt: string
+  position?: string
+}
+
+interface PageHeroProps {
+  eyebrow: string
+  title: string
+  italicTitle?: string
+  description: string
+  tone?: 'cream' | 'dark'
+  image?: string
+  images?: HeroImage[]
+  imageAlt?: string
+  imagePosition?: string
+  primaryAction?: HeroAction
+  secondaryAction?: HeroAction
+  supporting?: ReactNode
+  visual?: ReactNode
+  backgroundDecor?: ReactNode
+}
+
+function actionClass(action: HeroAction) {
+  return action.variant === 'outline' ? 'btn btn-outline' : 'btn btn-gold'
+}
+
+function ActionLink({ action, dark, reduced }: { action: HeroAction; dark: boolean; reduced: boolean }) {
+  const style = dark && action.variant === 'outline'
+    ? { borderColor: 'rgba(250,246,240,0.62)', color: 'rgba(250,246,240,0.90)' }
+    : undefined
+
+  if (!action.to.startsWith('#')) {
+    return (
+      <Link className={actionClass(action)} to={action.to} style={style}>
+        {action.label}
+      </Link>
+    )
+  }
+
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    const target = document.querySelector<HTMLElement>(action.to)
+    if (!target) return
+
+    event.preventDefault()
+    target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
+    window.history.pushState(null, '', action.to)
+  }
+
+  return (
+    <a className={actionClass(action)} href={action.to} onClick={handleClick} style={style}>
+      {action.label}
+    </a>
+  )
+}
+
+export function PageHero({
+  eyebrow,
+  title,
+  italicTitle,
+  description,
+  tone = 'cream',
+  image,
+  images,
+  imageAlt = '',
+  imagePosition = 'center',
+  primaryAction,
+  secondaryAction,
+  supporting,
+  visual,
+  backgroundDecor,
+}: PageHeroProps) {
+  const reduced = useReducedMotion()
+  const dark = tone === 'dark'
+  const slides = images ?? (image ? [{ src: image, alt: imageAlt, position: imagePosition }] : [])
+  const [activeSlide, setActiveSlide] = useState(() =>
+    slides.length > 1 ? Math.floor(Math.random() * slides.length) : 0,
+  )
+  const hasVisual = Boolean(slides.length || visual)
+
+  useEffect(() => {
+    if (slides.length <= 1) {
+      setActiveSlide(0)
+      return
+    }
+    setActiveSlide(Math.floor(Math.random() * slides.length))
+  }, [slides.length])
+
+  useEffect(() => {
+    if (reduced || slides.length <= 1) return
+    const id = window.setInterval(() => {
+      setActiveSlide((current) => {
+        let next = Math.floor(Math.random() * slides.length)
+        if (next === current) next = (next + 1) % slides.length
+        return next
+      })
+    }, 4200)
+    return () => window.clearInterval(id)
+  }, [reduced, slides.length])
+
+  return (
+    <section
+      className="page-hero relative overflow-hidden"
+      style={{
+        background: dark
+          ? 'linear-gradient(135deg, #1c0e08 0%, #2c1810 58%, #3a2008 100%)'
+          : 'linear-gradient(135deg, #faf6f0 0%, #fffdf9 52%, #f2eae0 100%)',
+        color: dark ? '#FAF6F0' : '#2c1810',
+      }}
+    >
+      {backgroundDecor}
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden="true"
+        style={{
+          background: dark
+            ? 'radial-gradient(ellipse 70% 60% at 100% 18%, rgba(212,168,67,0.16) 0%, transparent 68%), radial-gradient(ellipse 62% 54% at 0% 100%, rgba(250,246,240,0.08) 0%, transparent 70%)'
+            : 'radial-gradient(ellipse 70% 60% at 94% 10%, rgba(212,168,67,0.13) 0%, transparent 68%), radial-gradient(ellipse 58% 50% at 0% 100%, rgba(44,24,16,0.045) 0%, transparent 72%)',
+        }}
+      />
+      <div
+        className="pointer-events-none absolute left-0 top-0 h-full w-80 opacity-[0.045]"
+        aria-hidden="true"
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(135deg, #D4A843 0px, #D4A843 1px, transparent 1px, transparent 28px)',
+        }}
+      />
+
+      <div
+        className={`container-page relative z-10 grid gap-10 pb-12 pt-6 md:pb-16 md:pt-8 ${
+          hasVisual ? 'lg:grid-cols-[minmax(0,0.9fr)_minmax(360px,0.75fr)] lg:items-center' : ''
+        }`}
+      >
+        <motion.div
+          initial={reduced ? false : { opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.62, ease: 'easeOut' }}
+          className="max-w-3xl"
+        >
+          <p className={dark ? 'text-[0.64rem] font-bold uppercase tracking-[0.18em] text-gold-light' : 'eyebrow'}>
+            {eyebrow}
+          </p>
+          <h1
+            className="display-heading mt-3 text-[clamp(2.55rem,5.7vw,5.35rem)] font-semibold leading-[1.04]"
+            style={{ color: dark ? '#FAF6F0' : '#2c1810' }}
+          >
+            {title}
+            {italicTitle && (
+              <>
+                <br />
+                <em className="font-light italic" style={{ color: dark ? 'rgba(250,246,240,0.88)' : '#5c3317' }}>
+                  {italicTitle}
+                </em>
+              </>
+            )}
+          </h1>
+          <p
+            className={`mt-5 max-w-2xl text-base leading-[1.9] md:text-lg ${
+              dark ? 'text-cream/75' : 'text-espresso/80'
+            }`}
+          >
+            {description}
+          </p>
+
+          {supporting && <div className="mt-7">{supporting}</div>}
+
+          {(primaryAction || secondaryAction) && (
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              {primaryAction && (
+                <ActionLink action={primaryAction} dark={dark} reduced={reduced} />
+              )}
+              {secondaryAction && (
+                <ActionLink action={secondaryAction} dark={dark} reduced={reduced} />
+              )}
+            </div>
+          )}
+        </motion.div>
+
+        {hasVisual && (
+          <motion.div
+            initial={reduced ? false : { opacity: 0, y: 18, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.65, delay: 0.08, ease: 'easeOut' }}
+            className="relative"
+          >
+            {visual ?? (
+              <div
+                className="relative aspect-[4/5] overflow-hidden rounded-card"
+                style={{
+                  boxShadow: dark
+                    ? '0 28px 80px rgba(10,5,2,0.38), 0 0 0 1px rgba(212,168,67,0.22)'
+                    : '0 26px 72px rgba(44,24,16,0.14), 0 0 0 1px rgba(212,168,67,0.18)',
+                }}
+              >
+                {slides.map((slide, index) => (
+                  <motion.img
+                    key={slide.src}
+                    src={slide.src}
+                    alt={index === activeSlide ? slide.alt : ''}
+                    aria-hidden={index !== activeSlide}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{ objectPosition: slide.position ?? imagePosition }}
+                    initial={false}
+                    animate={{ opacity: index === activeSlide ? 1 : 0, scale: index === activeSlide ? 1 : 1.025 }}
+                    transition={{ duration: reduced ? 0 : 0.9, ease: 'easeInOut' }}
+                    draggable={false}
+                  />
+                ))}
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  aria-hidden="true"
+                  style={{
+                    background: dark
+                      ? 'linear-gradient(to top, rgba(28,14,8,0.34), transparent 58%)'
+                      : 'linear-gradient(to top, rgba(44,24,16,0.18), transparent 60%)',
+                  }}
+                />
+                {slides.length > 1 && !reduced && (
+                  <div className="absolute bottom-4 right-4 z-10 flex items-center gap-1.5" aria-hidden="true">
+                    {slides.map((slide, index) => (
+                      <span
+                        key={slide.src}
+                        className="h-1.5 rounded-full transition-all duration-300"
+                        style={{
+                          width: index === activeSlide ? 22 : 6,
+                          background: index === activeSlide ? '#d4a843' : 'rgba(250,246,240,0.52)',
+                          boxShadow: index === activeSlide ? '0 0 18px rgba(212,168,67,0.36)' : 'none',
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </div>
+    </section>
+  )
+}

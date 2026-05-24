@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+import base64
+from typing import Any
+
+import boto3
+
+from common.config import get_config
+from common.errors import ForbiddenError
+
+_kms = boto3.client("kms")
+
+
+def _groups_from_claims(claims: dict[str, Any]) -> set[str]:
+    raw = claims.get("cognito:groups", [])
+    if isinstance(raw, str):
+        return {item.strip() for item in raw.split(",") if item.strip()}
+    if isinstance(raw, list):
+        return {str(item) for item in raw}
+    return set()
+
+
+def require_admin(event: dict) -> str:
+    claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
+    if "admins" not in _groups_from_claims(claims):
+        raise ForbiddenError("Admin group membership is required.")
+    return str(claims.get("sub", "unknown-admin"))
+
+
+def encrypt_pii(value: str | None) -> str | None:
+    if not value:
+        return value
+    config = get_config()
+    if not config.kms_key_id:
+        if config.environment == "prod":
+            raise RuntimeError("KMS_KEY_ID is required in prod for PII encryption.")
+        encoded = base64.b64encode(value.encode("utf-8")).decode("utf-8")
+        return f"local:v1:{encoded}"
+
+    response = _kms.encrypt(KeyId=config.kms_key_id, Plaintext=value.encode("utf-8"))
+    encoded = base64.b64encode(response["CiphertextBlob"]).decode("utf-8")
+    return f"kms:v1:{encoded}"
+
+
+def decrypt_pii(value: str | None) -> str | None:
+    if not value:
+        return value
+    if value.startswith("local:v1:"):
+        return base64.b64decode(value.removeprefix("local:v1:")).decode("utf-8")
+    if value.startswith("kms:v1:"):
+        blob = base64.b64decode(value.removeprefix("kms:v1:"))
+        return _kms.decrypt(CiphertextBlob=blob)["Plaintext"].decode("utf-8")
+    return value
+
+
+def validate_cdn_url(value: str, prefix: str) -> str:
+    config = get_config()
+    allowed_prefix = f"{config.cdn_base_url}/{prefix.strip('/')}/"
+    if not value.startswith(allowed_prefix):
+        raise ValueError(f"Image URL must start with {allowed_prefix}")
+    return value

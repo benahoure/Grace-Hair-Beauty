@@ -1,0 +1,14 @@
+env                       = "dev"
+domain_name               = "dev.gracehairsbeauty.com"
+hosted_zone_name          = "gracehairsbeauty.com"
+lambda_memory_public      = 256
+lambda_memory_admin       = 256
+lambda_timeout            = 29
+log_retention_days        = 14
+waf_rate_limit            = 500
+waf_common_override_count = true
+log_level                 = "DEBUG"
+allowed_origin            = "https://dev.gracehairsbeauty.com"
+ses_sender_email          = "no-reply@gracehairsbeauty.com"
+cognito_callback_urls     = ["https://dev.gracehairsbeauty.com/admin/callback"]
+cognito_logout_urls       = ["https://dev.gracehairsbeauty.com/admin"]
