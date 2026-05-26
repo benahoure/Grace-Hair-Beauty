@@ -61,7 +61,7 @@ terraform plan -var-file=env/dev.tfvars
 
 ## Deployment Summary
 
-1. Bootstrap the Terraform state bucket `gracehairsbeauty-tfstate` and lock table `gracehairsbeauty-tflock`.
+1. Bootstrap the Terraform state bucket `gracehairsbeauty-tfstatefiles` and lock table `gracehairsbeauty-tflock`.
 2. Configure GitHub Actions OIDC roles and repository secrets listed in `docs/deployment-guide.md`.
 3. Run Terraform for `dev`, then `prod`.
 4. Deploy backend artifact with `deploy-backend.yml`.

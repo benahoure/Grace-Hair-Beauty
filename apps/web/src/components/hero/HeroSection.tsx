@@ -371,10 +371,10 @@ export function HeroSection() {
                 }}
               >
                 <motion.span className="block" style={{ opacity: h1Opacity, x: h1X, y: h1Y }}>
-                  Your Hair, Your Crown.
+                  Elegance, Speed.
                 </motion.span>
                 <motion.span className="block font-light italic" style={{ opacity: h2Opacity, x: h2X, y: h2Y }}>
-                  Braided to Perfection.
+                  Exceptional Service.
                 </motion.span>
               </h1>
 
@@ -546,9 +546,9 @@ export function HeroSection() {
         <div className="container-page grid min-h-[calc(100vh-var(--header-height))] grid-cols-1 items-center gap-10 py-16 md:grid-cols-2 md:gap-12 md:py-24">
           <div className="max-w-2xl">
             <h1 className="display-heading text-[clamp(2.55rem,7vw,4.8rem)] font-semibold leading-[1.06]">
-              Your Hair, Your Crown.
+              Elegance, Speed.
               <br />
-              <em className="font-light">Braided to Perfection.</em>
+              <em className="font-light">Exceptional Service.</em>
             </h1>
             <p className="mt-6 max-w-lg text-lg leading-[1.8] text-espresso">{BODY_COPY}</p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -665,17 +665,14 @@ export function HeroSection() {
             {/* Desktop only: individual-letter split on headlines, word-split on body */}
             <h1
               className="font-display text-[clamp(3.45rem,4.75vw,5.4rem)] font-semibold leading-[0.98] text-cream"
-              aria-label="Your Hair, Your Crown. Braided to Perfection."
+              aria-label="Elegance, Speed. Exceptional Service."
               style={{ textShadow: '0 4px 28px rgba(28,14,8,0.42)' }}
             >
               <span className="block" aria-hidden="true">
-                <FallingLetters text="Your Hair," lineDrift={-1} exitProgress={h1ExitP} />
-              </span>
-              <span className="block" aria-hidden="true">
-                <FallingLetters text="Your Crown." lineDrift={-1} exitProgress={h1ExitP} />
+                <FallingLetters text="Elegance, Speed." lineDrift={-1} exitProgress={h1ExitP} />
               </span>
               <span className="mt-3 block text-[0.64em] font-light italic leading-[1.02]" aria-hidden="true">
-                <FallingLetters text="Braided to Perfection." lineDrift={1} exitProgress={h2ExitP} />
+                <FallingLetters text="Exceptional Service." lineDrift={1} exitProgress={h2ExitP} />
               </span>
             </h1>
 

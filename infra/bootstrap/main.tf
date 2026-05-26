@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.7"
+  required_version = ">= 1.9.8"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -16,7 +16,7 @@ resource "aws_s3_bucket" "tfstate" {
   #checkov:skip=CKV_AWS_18:Terraform state bootstrap bucket access is restricted to CI/IAM roles; CloudTrail covers API access audit
   #checkov:skip=CKV_AWS_144:Cross-region replication is a cost/complexity tradeoff for this small single-region deployment
   #checkov:skip=CKV2_AWS_62:Event notifications are not required for Terraform state storage
-  bucket        = "gracehairsbeauty-tfstate"
+  bucket        = "gracehairsbeauty-tfstatefiles"
   force_destroy = false
 }
 
@@ -28,7 +28,7 @@ resource "aws_kms_key" "tfstate" {
 }
 
 resource "aws_kms_alias" "tfstate" {
-  name          = "alias/gracehairsbeauty-tfstate"
+  name          = "alias/gracehairsbeauty-tfstatefiles"
   target_key_id = aws_kms_key.tfstate.key_id
 }
 

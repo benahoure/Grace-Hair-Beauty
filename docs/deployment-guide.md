@@ -2,7 +2,7 @@
 
 ## 1. Bootstrap Terraform State
 
-Create a private S3 bucket named `gracehairsbeauty-tfstate` and a DynamoDB lock table named `gracehairsbeauty-tflock` with `LockID` as the string hash key.
+Create a private S3 bucket named `gracehairsbeauty-tfstatefiles` and a DynamoDB lock table named `gracehairsbeauty-tflock` with `LockID` as the string hash key.
 
 ## 2. Configure AWS DNS and Email
 

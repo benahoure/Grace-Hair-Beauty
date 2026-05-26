@@ -1,4 +1,4 @@
-bucket         = "gracehairsbeauty-tfstate"
+bucket         = "gracehairsbeauty-tfstatefiles"
 key            = "prod/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
