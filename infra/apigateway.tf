@@ -9,7 +9,7 @@ resource "aws_apigatewayv2_api" "this" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = [var.allowed_origin]
+    allow_origins = local.api_allowed_origins
     allow_methods = ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
     allow_headers = ["Content-Type", "Authorization"]
     max_age       = 300
@@ -20,6 +20,23 @@ resource "aws_apigatewayv2_stage" "this" {
   api_id      = aws_apigatewayv2_api.this.id
   name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    detailed_metrics_enabled = true
+    throttling_burst_limit   = var.api_default_throttle_burst_limit
+    throttling_rate_limit    = var.api_default_throttle_rate_limit
+  }
+
+  dynamic "route_settings" {
+    for_each = local.public_submission_route_throttles
+
+    content {
+      route_key                = route_settings.key
+      detailed_metrics_enabled = true
+      throttling_burst_limit   = route_settings.value.burst_limit
+      throttling_rate_limit    = route_settings.value.rate_limit
+    }
+  }
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_access.arn

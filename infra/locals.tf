@@ -5,6 +5,23 @@ locals {
   public_lambda_name = "gracehairsbeauty-${var.env}-public-api"
   admin_lambda_name  = "gracehairsbeauty-${var.env}-admin-api"
 
+  api_allowed_origins = distinct(concat([var.allowed_origin], var.additional_allowed_origins))
+
+  public_submission_route_throttles = {
+    "POST /appointments" = {
+      rate_limit  = var.api_submission_throttle_rate_limit
+      burst_limit = var.api_submission_throttle_burst_limit
+    }
+    "POST /contact" = {
+      rate_limit  = var.api_submission_throttle_rate_limit
+      burst_limit = var.api_submission_throttle_burst_limit
+    }
+    "POST /reviews" = {
+      rate_limit  = var.api_submission_throttle_rate_limit
+      burst_limit = var.api_submission_throttle_burst_limit
+    }
+  }
+
   dynamodb_table_arns = [
     aws_dynamodb_table.services.arn,
     aws_dynamodb_table.appointments.arn,
@@ -36,6 +53,22 @@ locals {
     "${aws_dynamodb_table.reviews.arn}/index/*",
     aws_dynamodb_table.business_settings.arn,
   ]
+
+  lambda_alarm_functions = {
+    public_api = module.public_api.lambda_function_name
+    admin_api  = module.admin_api.lambda_function_name
+  }
+
+  dynamodb_alarm_table_names = {
+    services          = aws_dynamodb_table.services.name
+    appointments      = aws_dynamodb_table.appointments.name
+    portfolio         = aws_dynamodb_table.portfolio.name
+    reviews           = aws_dynamodb_table.reviews.name
+    contact_messages  = aws_dynamodb_table.contact_messages.name
+    business_settings = aws_dynamodb_table.business_settings.name
+    admin_audit_log   = aws_dynamodb_table.admin_audit_log.name
+    idempotency       = aws_dynamodb_table.idempotency.name
+  }
 
   public_routes = toset([
     "GET /services",

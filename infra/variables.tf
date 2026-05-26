@@ -85,3 +85,74 @@ variable "allowed_origin" {
   description = "Allowed browser origin for CORS."
   type        = string
 }
+
+variable "additional_allowed_origins" {
+  description = "Optional additional CORS origins for non-production environments, such as local frontend development."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = var.env != "prod" || length(var.additional_allowed_origins) == 0
+    error_message = "additional_allowed_origins must be empty in prod."
+  }
+}
+
+variable "api_default_throttle_rate_limit" {
+  description = "Default API Gateway steady-state requests per second per route."
+  type        = number
+  default     = 50
+}
+
+variable "api_default_throttle_burst_limit" {
+  description = "Default API Gateway burst requests per route."
+  type        = number
+  default     = 100
+}
+
+variable "api_submission_throttle_rate_limit" {
+  description = "Tighter API Gateway steady-state requests per second for public write submission routes."
+  type        = number
+  default     = 2
+}
+
+variable "api_submission_throttle_burst_limit" {
+  description = "Tighter API Gateway burst requests for public write submission routes."
+  type        = number
+  default     = 10
+}
+
+variable "alarm_actions" {
+  description = "Optional CloudWatch alarm action ARNs, such as SNS topics. Empty keeps alarms visible without notifications."
+  type        = list(string)
+  default     = []
+}
+
+variable "lambda_error_alarm_threshold" {
+  description = "Lambda errors within one minute that should alarm."
+  type        = number
+  default     = 1
+}
+
+variable "lambda_throttle_alarm_threshold" {
+  description = "Lambda throttles within one minute that should alarm."
+  type        = number
+  default     = 1
+}
+
+variable "api_4xx_alarm_threshold" {
+  description = "API Gateway 4xx responses within five minutes that should alarm."
+  type        = number
+  default     = 25
+}
+
+variable "api_5xx_alarm_threshold" {
+  description = "API Gateway 5xx responses within one minute that should alarm."
+  type        = number
+  default     = 1
+}
+
+variable "dynamodb_throttle_alarm_threshold" {
+  description = "DynamoDB throttle events within one minute that should alarm."
+  type        = number
+  default     = 1
+}

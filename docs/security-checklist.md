@@ -3,7 +3,10 @@
 - S3 buckets use Block Public Access and CloudFront OAC.
 - CloudFront enforces HTTPS and security headers.
 - WAF managed rules and rate limits are enabled.
-- API CORS allows only the configured site origin.
+- API CORS allows only the configured site origin, with optional extra origins limited to non-production.
+- API Gateway stage throttling is enabled, with tighter limits on public write submission routes.
+- CloudWatch alarms cover Lambda errors/throttles, API 4xx/5xx spikes, and DynamoDB throttles.
+- Recommended follow-up: place the API custom domain behind CloudFront/WAF or attach a regional WAF if HTTP API support is available for the target region/account.
 - Admin APIs require Cognito JWT and `admins` group membership.
 - Cognito self-signup is disabled.
 - Lambda roles are per function and scoped to table/resource ARNs.
