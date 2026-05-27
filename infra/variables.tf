@@ -121,6 +121,18 @@ variable "api_submission_throttle_burst_limit" {
   default     = 10
 }
 
+variable "public_api_reserved_concurrent_executions" {
+  description = "Reserved concurrency for the public API Lambda. Use -1 to leave concurrency unreserved."
+  type        = number
+  default     = -1
+}
+
+variable "admin_api_reserved_concurrent_executions" {
+  description = "Reserved concurrency for the admin API Lambda. Use -1 to leave concurrency unreserved."
+  type        = number
+  default     = -1
+}
+
 variable "alarm_actions" {
   description = "Optional CloudWatch alarm action ARNs, such as SNS topics. Empty keeps alarms visible without notifications."
   type        = list(string)

@@ -63,6 +63,8 @@ resource "aws_cognito_user_pool_domain" "auth" {
   domain          = "auth.${var.domain_name}"
   certificate_arn = aws_acm_certificate_validation.site.certificate_arn
   user_pool_id    = aws_cognito_user_pool.this.id
+
+  depends_on = [aws_route53_record.frontend]
 }
 
 resource "aws_cognito_user_group" "admins" {

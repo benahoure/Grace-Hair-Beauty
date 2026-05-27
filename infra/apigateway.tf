@@ -51,6 +51,11 @@ resource "aws_apigatewayv2_stage" "this" {
       responseLength = "$context.responseLength"
     })
   }
+
+  depends_on = [
+    aws_apigatewayv2_route.public,
+    aws_apigatewayv2_route.admin,
+  ]
 }
 
 resource "aws_apigatewayv2_domain_name" "this" {

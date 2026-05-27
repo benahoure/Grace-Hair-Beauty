@@ -6,7 +6,7 @@ module "admin_api" {
   function_name = local.admin_lambda_name
   description   = "Grace Hair Beauty admin API"
   handler       = "admin_api.handler.lambda_handler"
-  runtime       = "python3.13"
+  runtime       = "python3.14"
   architectures = ["arm64"]
   memory_size   = var.lambda_memory_admin
   timeout       = var.lambda_timeout
@@ -43,9 +43,9 @@ module "admin_api" {
       actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"]
       resources = concat(local.dynamodb_table_arns, local.dynamodb_index_arns)
     }
-    kms_decrypt_pii = {
+    kms_data_key = {
       effect    = "Allow"
-      actions   = ["kms:Decrypt"]
+      actions   = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"]
       resources = [aws_kms_key.data.arn]
     }
     s3_objects = {
@@ -89,7 +89,9 @@ module "admin_api" {
 
   cloudwatch_logs_retention_in_days = var.log_retention_days
   tracing_mode                      = "Active"
-  reserved_concurrent_executions    = 10
+  reserved_concurrent_executions    = var.admin_api_reserved_concurrent_executions
+
+  create_current_version_allowed_triggers = false
 
   allowed_triggers = {
     api_gateway = {

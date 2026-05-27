@@ -1,5 +1,5 @@
 PYTHON ?= python3
-LAMBDA_PYTHON_VERSION ?= 3.13
+LAMBDA_PYTHON_VERSION ?= 3.14
 LAMBDA_PLATFORM ?= manylinux2014_aarch64
 
 .PHONY: lint test build package clean security-scan

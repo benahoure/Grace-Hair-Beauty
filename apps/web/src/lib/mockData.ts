@@ -15,7 +15,7 @@ const hours = {
 export const defaultBusinessSettings: BusinessSettings = {
   businessName: 'Grace Hair Beauty',
   phone: '+13178503001',
-  email: 'ghbeauty24@gmail.com',
+  email: 'plbahoure2993@gmail.com',
   address: {
     street: '955 Baden Manor Dr',
     city: 'Indianapolis',

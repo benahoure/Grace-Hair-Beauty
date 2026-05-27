@@ -42,12 +42,9 @@ resource "aws_cloudfront_response_headers_policy" "frontend_security" {
       referrer_policy = "strict-origin-when-cross-origin"
       override        = true
     }
-  }
 
-  custom_headers_config {
-    items {
-      header = "Content-Security-Policy"
-      value = join("; ", [
+    content_security_policy {
+      content_security_policy = join("; ", [
         "default-src 'self'",
         "script-src 'self' 'unsafe-eval'",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",

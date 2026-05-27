@@ -6,7 +6,7 @@ module "public_api" {
   function_name = local.public_lambda_name
   description   = "Grace Hair Beauty public API"
   handler       = "public_api.handler.lambda_handler"
-  runtime       = "python3.13"
+  runtime       = "python3.14"
   architectures = ["arm64"]
   memory_size   = var.lambda_memory_public
   timeout       = var.lambda_timeout
@@ -49,9 +49,9 @@ module "public_api" {
         aws_dynamodb_table.admin_audit_log.arn,
       ]
     }
-    kms_encrypt_pii = {
+    kms_data_key = {
       effect    = "Allow"
-      actions   = ["kms:Encrypt"]
+      actions   = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"]
       resources = [aws_kms_key.data.arn]
     }
     dynamo_idempotency = {
@@ -80,7 +80,9 @@ module "public_api" {
 
   cloudwatch_logs_retention_in_days = var.log_retention_days
   tracing_mode                      = "Active"
-  reserved_concurrent_executions    = 50
+  reserved_concurrent_executions    = var.public_api_reserved_concurrent_executions
+
+  create_current_version_allowed_triggers = false
 
   allowed_triggers = {
     api_gateway = {

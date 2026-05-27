@@ -360,5 +360,5 @@ def test_business_settings_returns_safe_defaults_when_unseeded(monkeypatch, lamb
 
     assert response["statusCode"] == 200
     assert body["businessName"] == "Grace Hair Beauty"
-    assert body["email"] == "ghbeauty24@gmail.com"
+    assert body["email"] == "plbahoure2993@gmail.com"
     assert body["address"]["street"] == "955 Baden Manor Dr"
