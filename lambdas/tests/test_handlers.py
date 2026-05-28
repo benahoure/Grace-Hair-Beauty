@@ -60,9 +60,15 @@ def test_appointment_service_persists_portfolio_style_id(monkeypatch) -> None:
         "get_item",
         lambda *args, **kwargs: {"serviceId": "svc-knotless-braids", "name": "Knotless Braids", "active": True},
     )
+    sent_customer_emails = []
+    sent_admin_alerts = []
     monkeypatch.setattr(service, "put_item", lambda table, item: writes.append((table, item)))
-    monkeypatch.setattr(service, "best_effort_send_email", lambda **kwargs: True)
-    monkeypatch.setattr(service, "notify_admin", lambda *args, **kwargs: True)
+    monkeypatch.setattr(service, "best_effort_send_email", lambda **kwargs: sent_customer_emails.append(kwargs) or True)
+    monkeypatch.setattr(
+        service,
+        "notify_admin",
+        lambda *args, **kwargs: sent_admin_alerts.append((args, kwargs)) or True,
+    )
 
     request = AppointmentRequest.model_validate(
         {
@@ -83,6 +89,9 @@ def test_appointment_service_persists_portfolio_style_id(monkeypatch) -> None:
     audit_item = next(item for table, item in writes if table == "audit-log")
     assert appointment_item["portfolioStyleId"] == "style-boho-waist-length"
     assert audit_item["detail"]["portfolioStyleId"] == "style-boho-waist-length"
+    assert "Appointment Request Received" in sent_customer_emails[0]["html_body"]
+    assert "New Booking Request" in sent_admin_alerts[0][1]["html_body"]
+    assert "Amara Test" in sent_admin_alerts[0][1]["html_body"]
 
 
 def test_validation_errors_use_standardized_error_shape(lambda_context) -> None:
@@ -112,6 +121,9 @@ def test_public_reviews_return_approved_only(monkeypatch, lambda_context) -> Non
                     "rating": 5,
                     "body": "Grace took great care of my hair.",
                     "approved": True,
+                    "featured": True,
+                    "source": "website",
+                    "serviceName": "Knotless Braids",
                     "createdAt": "2026-05-01T00:00:00Z",
                 }
             ],
@@ -129,6 +141,10 @@ def test_public_reviews_return_approved_only(monkeypatch, lambda_context) -> Non
 
     assert response["statusCode"] == 200
     assert body["reviews"][0]["clientName"] == "Amara T."
+    assert body["reviews"][0]["status"] == "approved"
+    assert body["reviews"][0]["featured"] is True
+    assert body["reviews"][0]["source"] == "website"
+    assert body["reviews"][0]["serviceName"] == "Knotless Braids"
     assert body["aggregates"]["totalCount"] == 1
 
 

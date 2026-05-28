@@ -22,6 +22,35 @@ import type {
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined
 const useMockApi = !configuredBaseUrl
 
+interface ApiErrorBody {
+  error?: string | {
+    code?: string
+    message?: string
+    fieldErrors?: Record<string, string>
+  }
+}
+
+export class ApiRequestError extends Error {
+  status: number
+  code?: string
+  fieldErrors?: Record<string, string>
+
+  constructor(status: number, body: ApiErrorBody) {
+    const error = body.error
+    const message = typeof error === 'string'
+      ? error
+      : error?.message ?? `Request failed with ${status}`
+
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+    if (typeof error === 'object') {
+      this.code = error.code
+      this.fieldErrors = error.fieldErrors
+    }
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (useMockApi) {
     return mockRequest<T>(path, init)
@@ -40,8 +69,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   })
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string }
-    throw new Error(body.error ?? `Request failed with ${response.status}`)
+    const body = (await response.json().catch(() => ({}))) as ApiErrorBody
+    throw new ApiRequestError(response.status, body)
   }
 
   return response.json() as Promise<T>

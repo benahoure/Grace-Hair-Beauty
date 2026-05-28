@@ -127,6 +127,7 @@ cd ../lambdas
 
 TABLE_SERVICES=gracehairsbeauty-dev-services \
 TABLE_BUSINESS_SETTINGS=gracehairsbeauty-dev-business-settings \
+TABLE_PORTFOLIO=gracehairsbeauty-dev-portfolio \
 TABLE_REVIEWS=gracehairsbeauty-dev-reviews \
 CDN_BASE_URL=https://cdn.dev.gracehairsbeauty.com \
 python3 scripts/seed_data.py
@@ -156,15 +157,21 @@ cd ../..
 ## 8. Upload Frontend to S3
 
 ```bash
-aws s3 sync apps/web/dist s3://gracehairsbeauty-dev-frontend --delete --exclude ".DS_Store"
+aws s3 sync apps/web/dist s3://gracehairsbeauty-dev-frontend --delete --exclude ".DS_Store" --exclude "*/.DS_Store"
+aws s3 sync apps/web/dist/services s3://gracehairsbeauty-dev-assets/services --delete --exclude ".DS_Store" --exclude "*/.DS_Store"
+aws s3 sync apps/web/dist/products s3://gracehairsbeauty-dev-assets/products --delete --exclude ".DS_Store" --exclude "*/.DS_Store"
 ```
 
-Then invalidate CloudFront. If the distribution ID is not in Terraform outputs yet, retrieve it from the AWS Console or CLI.
+Then invalidate CloudFront. If the distribution IDs are not in Terraform outputs yet, retrieve them from the AWS Console or CLI.
 
 ```bash
 aws cloudfront create-invalidation \
   --distribution-id <dev-frontend-distribution-id> \
   --paths "/*"
+
+aws cloudfront create-invalidation \
+  --distribution-id <dev-assets-distribution-id> \
+  --paths "/services/*" "/products/*"
 ```
 
 ## 9. Smoke Test Dev

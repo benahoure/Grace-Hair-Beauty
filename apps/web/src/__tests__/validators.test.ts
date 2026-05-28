@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { bookingSchema, contactSchema, reviewSubmissionSchema } from '../lib/validators'
+import {
+  bookingSchema,
+  contactSchema,
+  reviewSubmissionSchema,
+  tomorrowInSalonTimeZone,
+} from '../lib/validators'
 
 describe('client validation', () => {
   it('accepts a valid booking request', () => {
@@ -24,6 +29,12 @@ describe('client validation', () => {
       serviceId: 'svc-knotless-braids',
       portfolioStyleId: 'style-boho-braids',
     })
+  })
+
+  it('calculates tomorrow in the salon timezone instead of UTC', () => {
+    const utcAfterMidnight = new Date('2026-05-28T00:30:00Z')
+
+    expect(tomorrowInSalonTimeZone(utcAfterMidnight)).toBe('2026-05-28')
   })
 
   it('rejects honeypot values on contact and review forms', () => {

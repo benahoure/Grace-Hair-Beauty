@@ -5,21 +5,15 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { z } from 'zod'
 
-import { api } from '../../lib/api'
+import { ApiRequestError, api } from '../../lib/api'
 import { formatPrice } from '../../lib/format'
 import { mockPortfolio } from '../../lib/mockData'
-import { bookingSchema } from '../../lib/validators'
+import { bookingSchema, tomorrowInSalonTimeZone } from '../../lib/validators'
 import type { AppointmentRequest, ServiceCategory } from '../../types'
 
 type BookingErrors = Partial<Record<keyof AppointmentRequest, string>>
 
 const STEPS = ['Service', 'Your Info', 'Date & Time']
-
-function tomorrowDateString(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
-}
 
 interface BookingCategoryDef {
   id: string
@@ -265,7 +259,15 @@ export function BookingForm() {
     }, {})
   }, [servicesQuery.data])
 
-  const appointmentMutation = useMutation({ mutationFn: api.createAppointment })
+  const appointmentMutation = useMutation({
+    mutationFn: api.createAppointment,
+    onError: (error) => {
+      if (error instanceof ApiRequestError && error.fieldErrors) {
+        setErrors(error.fieldErrors as BookingErrors)
+        window.setTimeout(() => errorRef.current?.focus(), 0)
+      }
+    },
+  })
 
   // Scroll the confirmation screen into view the moment it appears
   useEffect(() => {
@@ -337,7 +339,7 @@ export function BookingForm() {
   }
 
   const handleFinalSubmit = () => {
-    if (step !== 3) return
+    if (step !== 3 || appointmentMutation.isPending) return
     const result = bookingSchema.safeParse(formData)
     if (!result.success) {
       setErrors(flattenErrors(result.error))
@@ -753,10 +755,10 @@ export function BookingForm() {
                 id="preferredDate"
                 type="date"
                 value={formData.preferredDate}
-                min={tomorrowDateString()}
+                min={tomorrowInSalonTimeZone()}
                 onChange={(e) => update('preferredDate', e.target.value)}
                 onFocus={() => {
-                  if (!formData.preferredDate) update('preferredDate', tomorrowDateString())
+                  if (!formData.preferredDate) update('preferredDate', tomorrowInSalonTimeZone())
                 }}
                 aria-invalid={Boolean(errors.preferredDate)}
                 className="mt-2"

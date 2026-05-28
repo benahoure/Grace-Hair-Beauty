@@ -47,7 +47,7 @@ describe('HeroSection', () => {
 
   it('renders the headline, mobile booking CTA, portfolio CTA, and trust row', () => {
     renderHero()
-    expect(screen.getByRole('heading', { name: /your hair, your crown/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /elegance, speed\. exceptional service\./i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /book your appointment/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view our work/i })).toBeInTheDocument()
     expect(screen.getByText(/15\+ years/i)).toBeInTheDocument()

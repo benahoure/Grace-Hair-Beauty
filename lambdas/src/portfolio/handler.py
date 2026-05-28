@@ -20,7 +20,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
         category = params.get("category")
         if category and category not in VALID_CATEGORIES:
             return bad_request("Invalid portfolio category.")
-        limit = min(int(params.get("limit", "20")), 50)
+        limit = min(int(params.get("limit", "50")), 50)
         items, next_cursor = scan_items(
             get_config().table_portfolio,
             filter_expression=active_filter(),

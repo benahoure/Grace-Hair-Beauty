@@ -39,7 +39,11 @@ def get_reviews(event: dict) -> dict:
                 "clientName": item["clientName"],
                 "rating": item["rating"],
                 "body": item["body"],
+                "serviceName": item.get("serviceName"),
                 "createdAt": item["createdAt"],
+                "source": item.get("source", "website"),
+                "status": "approved",
+                "featured": item.get("featured", False),
             }
             for item in sorted(items, key=lambda item: item.get("createdAt", ""), reverse=True)
             if not str(item.get("reviewId", "")).startswith("AGGREGATE#")

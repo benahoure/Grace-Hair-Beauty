@@ -41,6 +41,27 @@ def test_appointment_validation_rejects_past_date() -> None:
         )
 
 
+def test_appointment_validation_uses_salon_timezone_today(monkeypatch) -> None:
+    from appointments import models
+    from appointments.models import AppointmentRequest
+
+    monkeypatch.setattr(models, "_salon_today", lambda: dt.date(2026, 5, 27))
+
+    request = AppointmentRequest.model_validate(
+        {
+            "serviceId": "svc-knotless-braids",
+            "clientName": "Amara Test",
+            "clientEmail": "amara@example.com",
+            "clientPhone": "3175550123",
+            "preferredDate": "2026-05-28",
+            "preferredTime": "10:00",
+            "honeypot": "",
+        }
+    )
+
+    assert request.preferredDate == dt.date(2026, 5, 28)
+
+
 def test_contact_validation_accepts_optional_email_required_phone_and_photo_name() -> None:
     from contact.models import ContactRequest
 
