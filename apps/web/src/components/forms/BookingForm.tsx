@@ -165,7 +165,6 @@ export function BookingForm() {
     clientPhone: '',
     preferredDate: '',
     preferredTime: '',
-    alternateDate: '',
     notes: requestedStyleTitle
       ? `Portfolio inspiration: ${requestedStyleTitle}`
       : requestedStyle

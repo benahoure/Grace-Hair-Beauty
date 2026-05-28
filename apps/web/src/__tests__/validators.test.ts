@@ -19,7 +19,6 @@ describe('client validation', () => {
       clientPhone: '3175550123',
       preferredDate: tomorrow.toISOString().slice(0, 10),
       preferredTime: '10:00',
-      alternateDate: '',
       notes: '',
       referralSource: 'instagram',
       honeypot: '',

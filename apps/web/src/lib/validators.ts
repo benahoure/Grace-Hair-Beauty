@@ -48,7 +48,6 @@ export const bookingSchema = z.object({
   clientPhone: phoneSchema,
   preferredDate: futureDate,
   preferredTime: z.string().regex(/^\d{2}:\d{2}$/, 'Choose a preferred time.'),
-  alternateDate: z.string().optional().or(z.literal('')),
   notes: z.string().max(500, 'Please keep notes under 500 characters.').optional(),
   referralSource: z
     .enum(['instagram', 'tiktok', 'google', 'yelp', 'friend', 'other', ''])

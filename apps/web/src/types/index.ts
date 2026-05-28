@@ -109,7 +109,6 @@ export interface AppointmentRequest {
   clientPhone: string
   preferredDate: string
   preferredTime: string
-  alternateDate?: string
   notes?: string
   referralSource?: 'instagram' | 'tiktok' | 'google' | 'yelp' | 'friend' | 'other' | ''
   honeypot: string

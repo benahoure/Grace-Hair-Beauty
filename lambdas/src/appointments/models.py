@@ -23,7 +23,6 @@ class AppointmentRequest(HtmlStrippingModelMixin, BaseModel):
     clientPhone: str = Field(min_length=7, max_length=20)
     preferredDate: dt.date
     preferredTime: str = Field(pattern=r"^\d{2}:\d{2}$")
-    alternateDate: dt.date | None = None
     notes: str = Field(default="", max_length=500)
     referralSource: Literal["instagram", "tiktok", "google", "yelp", "friend", "other", ""] = ""
     honeypot: str = Field(default="", exclude=True)
@@ -33,7 +32,7 @@ class AppointmentRequest(HtmlStrippingModelMixin, BaseModel):
     def validate_phone(cls, value: str) -> str:
         return normalize_us_phone(value)
 
-    @field_validator("preferredDate", "alternateDate", mode="after")
+    @field_validator("preferredDate", mode="after")
     @classmethod
     def validate_future_date(cls, value: dt.date | None) -> dt.date | None:
         if value is None:

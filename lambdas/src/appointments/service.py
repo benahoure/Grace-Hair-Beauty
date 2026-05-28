@@ -238,7 +238,6 @@ def create_appointment(request: AppointmentRequest) -> dict:
         "clientPhone": encrypt_pii(request.clientPhone),
         "preferredDate": request.preferredDate.isoformat(),
         "preferredTime": request.preferredTime,
-        "alternateDate": request.alternateDate.isoformat() if request.alternateDate else None,
         "notes": request.notes,
         "status": "pending",
         "statusKey": "pending",
