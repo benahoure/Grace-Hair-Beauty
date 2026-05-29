@@ -138,3 +138,31 @@ export interface AdminAppointment extends AppointmentRequest {
   adminNote?: string | null
   createdAt: string
 }
+
+export interface AdminReview {
+  reviewId: string
+  clientName: string
+  rating: number
+  body: string
+  serviceName?: string
+  avatarUrl?: string
+  approved: boolean
+  featured: boolean
+  source: 'website' | 'google'
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface AdminContactMessage {
+  messageId: string
+  name: string
+  email: string
+  phone: string
+  message: string
+  services: string[]
+  read: boolean
+  createdAt: string
+  replied?: boolean
+  replyText?: string
+  repliedAt?: string
+}

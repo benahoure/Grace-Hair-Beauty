@@ -97,6 +97,8 @@ locals {
     "GET /admin/appointments",
     "PATCH /admin/appointments/{appointmentId}",
     "GET /admin/contact-messages",
+    "PATCH /admin/contact-messages/{messageId}",
+    "POST /admin/contact-messages/{messageId}/reply",
     "GET /admin/business-settings",
     "PATCH /admin/business-settings",
     "GET /admin/audit-log",

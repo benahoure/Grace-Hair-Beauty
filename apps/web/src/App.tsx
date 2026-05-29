@@ -16,6 +16,7 @@ import { Reviews } from './pages/Reviews'
 import { Services } from './pages/Services'
 import { AdminAppointments } from './pages/admin/AdminAppointments'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
+import { AdminMessages } from './pages/admin/AdminMessages'
 import { AdminPortfolio } from './pages/admin/AdminPortfolio'
 import { AdminReviews } from './pages/admin/AdminReviews'
 import { AdminRoot } from './pages/admin/AdminRoot'
@@ -64,6 +65,14 @@ export function App() {
           element={
             <ProtectedAdminRoute>
               <AdminAppointments />
+            </ProtectedAdminRoute>
+          }
+        />
+        <Route
+          path="admin/messages"
+          element={
+            <ProtectedAdminRoute>
+              <AdminMessages />
             </ProtectedAdminRoute>
           }
         />

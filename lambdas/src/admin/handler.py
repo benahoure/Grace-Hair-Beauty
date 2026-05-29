@@ -78,6 +78,10 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             return delete_review(event, admin_user_id)
         if request_path == "/admin/contact-messages" and request_method == "GET":
             return get_contact_messages(event)
+        if path_parameter(event, "messageId") and request_method == "PATCH":
+            return patch_contact_message(event, admin_user_id)
+        if path_parameter(event, "messageId") and request_method == "POST" and request_path.endswith("/reply"):
+            return reply_to_contact_message(event, admin_user_id)
         if request_path == "/admin/business-settings" and request_method == "GET":
             return get_business_settings_admin(event)
         if request_path == "/admin/business-settings" and request_method == "PATCH":
@@ -173,9 +177,10 @@ def get_portfolio(event: dict) -> dict:
 
 def get_reviews_admin(event: dict) -> dict:
     params = query_params(event)
+    # Exclude aggregate/stats rows that share the table (e.g. reviewId = 'AGGREGATE#...')
     items, next_cursor = scan_items(
         get_config().table_reviews,
-        filter_expression=Attr("reviewId").exists(),
+        filter_expression=Attr("reviewId").exists() & Attr("clientName").exists(),
         limit=min(int(params.get("limit", "50")), 100),
         cursor=params.get("cursor"),
     )
@@ -410,6 +415,83 @@ def get_contact_messages(event: dict) -> dict:
         item["phone"] = decrypt_pii(item.get("phone"))
         messages.append(item)
     return ok({"messages": messages, "nextCursor": next_cursor})
+
+
+def patch_contact_message(event: dict, admin_user_id: str) -> dict:
+    message_id = resource_id(event, "messageId")
+    body = parse_json_body(event)
+    updates: dict[str, Any] = {}
+    if "read" in body:
+        if not isinstance(body["read"], bool):
+            return bad_request("Field 'read' must be a boolean.")
+        updates["read"] = body["read"]
+    if not updates:
+        return bad_request("No updatable fields provided.")
+    updates["updatedAt"] = utc_now()
+    try:
+        updated = update_item(get_config().table_contact_messages, {"messageId": message_id}, updates)
+    except NotFoundError:
+        return not_found("Contact message not found.")
+    audit(admin_user_id, "contact_message.updated", "contact_message", message_id, {"fields": sorted(updates)})
+    return ok(updated)
+
+
+def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
+    from common.ses_client import send_email
+
+    message_id = resource_id(event, "messageId")
+    body = parse_json_body(event)
+    reply_text = body.get("reply", "").strip()
+    if not reply_text:
+        return bad_request("Reply text is required.")
+
+    try:
+        item = get_item(get_config().table_contact_messages, {"messageId": message_id})
+    except NotFoundError:
+        return not_found("Contact message not found.")
+
+    client_email = decrypt_pii(item.get("email"))
+    if not client_email:
+        return bad_request("This message has no email address to reply to.")
+
+    client_name = item.get("name", "there")
+    original_message = item.get("message", "")
+
+    subject = "Re: Your inquiry to Grace Hair Beauty"
+    text_body = (
+        f"Hi {client_name},\n\n"
+        f"{reply_text}\n\n"
+        f"Grace Hair Beauty\n\n"
+        f"---\n"
+        f"Your original message:\n\"{original_message}\""
+    )
+    html_body = (
+        f"<p>Hi {client_name},</p>"
+        f"<p style='white-space:pre-wrap'>{reply_text}</p>"
+        f"<p><strong>Grace Hair Beauty</strong></p>"
+        f"<hr style='border:none;border-top:1px solid #ddd;margin:20px 0'/>"
+        f"<p style='color:#888;font-size:13px'>Your original message:<br/>"
+        f"<em>&ldquo;{original_message}&rdquo;</em></p>"
+    )
+
+    try:
+        send_email(to_address=client_email, subject=subject, text_body=text_body, html_body=html_body)
+    except Exception:
+        return ok({"sent": False, "error": "Email delivery failed. Please try again."})
+
+    updates = {
+        "read": True,
+        "replied": True,
+        "replyText": reply_text,
+        "repliedAt": utc_now(),
+        "repliedBy": admin_user_id,
+        "updatedAt": utc_now(),
+    }
+    updated = update_item(get_config().table_contact_messages, {"messageId": message_id}, updates)
+    updated["email"] = decrypt_pii(updated.get("email"))
+    updated["phone"] = decrypt_pii(updated.get("phone"))
+    audit(admin_user_id, "contact_message.replied", "contact_message", message_id, {})
+    return ok({**updated, "sent": True})
 
 
 def patch_business_settings(event: dict, admin_user_id: str) -> dict:

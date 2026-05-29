@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any
 
 import boto3
@@ -13,10 +14,14 @@ _kms = boto3.client("kms")
 
 def _groups_from_claims(claims: dict[str, Any]) -> set[str]:
     raw = claims.get("cognito:groups", [])
-    if isinstance(raw, str):
-        return {item.strip() for item in raw.split(",") if item.strip()}
     if isinstance(raw, list):
-        return {str(item) for item in raw}
+        return {str(item).strip() for item in raw if str(item).strip()}
+    if isinstance(raw, str):
+        # HTTP API JWT authorizers serialize array claims to a string such as
+        # "[admins]" or "[admins, staff]"; strip wrapping brackets, then split
+        # on commas/whitespace so every serialization shape resolves correctly.
+        cleaned = raw.strip().removeprefix("[").removesuffix("]")
+        return {part.strip() for part in re.split(r"[,\s]+", cleaned) if part.strip()}
     return set()
 
 

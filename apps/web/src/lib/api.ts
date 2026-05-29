@@ -7,6 +7,9 @@ import {
 } from './mockData'
 import { getAdminToken } from './auth'
 import type {
+  AdminAppointment,
+  AdminContactMessage,
+  AdminReview,
   AppointmentRequest,
   BusinessSettings,
   ContactRequest,
@@ -49,6 +52,14 @@ export class ApiRequestError extends Error {
       this.fieldErrors = error.fieldErrors
     }
   }
+}
+
+function buildQuery(params: Record<string, string | boolean | number | undefined>): string {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined) q.set(k, String(v))
+  }
+  return q.size ? `?${q}` : ''
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -127,37 +138,58 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
     } as T
   }
 
+  // ── Admin routes ────────────────────────────────────────────────────────────
+
   if (path.startsWith('/admin/appointments')) {
+    if (method === 'PATCH') {
+      return { appointmentId: 'mock', status: 'confirmed', serviceName: 'Mock Service' } as T
+    }
     return { appointments: [], nextCursor: null } as T
   }
 
   if (path.startsWith('/admin/contact-messages')) {
+    if (method === 'POST') return { messageId: 'mock', read: true, sent: true } as T
+    if (method === 'PATCH') return { messageId: 'mock', read: true } as T
     return { messages: [], nextCursor: null } as T
   }
 
   if (path.startsWith('/admin/services')) {
-    return { services: mockServices } as T
+    if (method === 'PATCH') return { ...mockServices[0] } as T
+    if (method === 'DELETE') return { message: 'Service deactivated.' } as T
+    return { services: mockServices, nextCursor: null } as T
   }
 
   if (path.startsWith('/admin/portfolio')) {
-    return { items: mockPortfolio } as T
+    if (method === 'PATCH') return { ...mockPortfolio[0] } as T
+    if (method === 'DELETE') return { message: 'Portfolio item deleted.' } as T
+    return { portfolio: mockPortfolio, nextCursor: null } as T
   }
 
   if (path.startsWith('/admin/reviews')) {
-    return { reviews: mockReviews } as T
+    if (method === 'PATCH') return { ...mockReviews[0], approved: true } as T
+    if (method === 'DELETE') return { message: 'Review deleted.' } as T
+    return { reviews: mockReviews.map((r) => ({ ...r, approved: true })), nextCursor: null } as T
+  }
+
+  if (path === '/admin/business-settings') {
+    if (method === 'PATCH') return defaultBusinessSettings as T
+    return defaultBusinessSettings as T
   }
 
   throw new Error(`Mock endpoint missing: ${method} ${path}`)
 }
 
 export const api = {
+  // ── Public ──────────────────────────────────────────────────────────────────
   getBusinessSettings: () => request<BusinessSettings>('/business-settings'),
+
   getServices: (params: { category?: ServiceCategory; featured?: boolean } = {}) => {
     const search = new URLSearchParams()
     if (params.category) search.set('category', params.category)
     if (params.featured) search.set('featured', 'true')
     return request<{ services: SalonService[] }>(`/services${search.size ? `?${search}` : ''}`)
   },
+
   getPortfolio: (params: { category?: PortfolioCategory } = {}) => {
     const search = new URLSearchParams()
     if (params.category) search.set('category', params.category)
@@ -165,26 +197,109 @@ export const api = {
       `/portfolio${search.size ? `?${search}` : ''}`,
     )
   },
+
   getReviews: () =>
     request<{ reviews: Review[]; aggregates: ReviewAggregates; nextCursor: string | null }>('/reviews'),
+
   createAppointment: (body: AppointmentRequest) =>
     request<{ appointmentId: string; status: string; message: string }>('/appointments', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
   createContactMessage: (body: ContactRequest) =>
     request<{ messageId: string; message: string }>('/contact', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
   submitReview: (body: ReviewSubmission) =>
     request<{ reviewId: string; status: string }>('/reviews', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  getAdminAppointments: () => request<{ appointments: unknown[]; nextCursor: string | null }>('/admin/appointments'),
-  getAdminContactMessages: () =>
-    request<{ messages: unknown[]; nextCursor: string | null }>('/admin/contact-messages'),
+
+  // ── Admin — Appointments ────────────────────────────────────────────────────
+  getAdminAppointments: (params: { status?: string; date?: string } = {}) =>
+    request<{ appointments: AdminAppointment[]; nextCursor: string | null }>(
+      `/admin/appointments${buildQuery(params)}`,
+    ),
+
+  updateAppointment: (
+    id: string,
+    body: { status: 'confirmed' | 'cancelled' | 'completed'; adminNote?: string | null },
+  ) =>
+    request<AdminAppointment>(`/admin/appointments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  // ── Admin — Services ────────────────────────────────────────────────────────
+  getAdminServices: () =>
+    request<{ services: SalonService[]; nextCursor: string | null }>('/admin/services'),
+
+  updateService: (id: string, body: Partial<Pick<SalonService, 'active' | 'featured' | 'name' | 'startingPrice' | 'durationMinutes' | 'description'>>) =>
+    request<SalonService>(`/admin/services/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteService: (id: string) =>
+    request<{ message: string }>(`/admin/services/${id}`, { method: 'DELETE' }),
+
+  // ── Admin — Portfolio ───────────────────────────────────────────────────────
+  getAdminPortfolio: () =>
+    request<{ portfolio: PortfolioItem[]; nextCursor: string | null }>('/admin/portfolio'),
+
+  updatePortfolio: (id: string, body: Partial<Pick<PortfolioItem, 'active' | 'featured' | 'title'>>) =>
+    request<PortfolioItem>(`/admin/portfolio/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deletePortfolio: (id: string) =>
+    request<{ message: string }>(`/admin/portfolio/${id}`, { method: 'DELETE' }),
+
+  // ── Admin — Reviews ─────────────────────────────────────────────────────────
+  getAdminReviews: () =>
+    request<{ reviews: AdminReview[]; nextCursor: string | null }>('/admin/reviews'),
+
+  updateReview: (id: string, body: { approved?: boolean; featured?: boolean }) =>
+    request<AdminReview>(`/admin/reviews/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteReview: (id: string) =>
+    request<{ message: string }>(`/admin/reviews/${id}`, { method: 'DELETE' }),
+
+  // ── Admin — Contact Messages ─────────────────────────────────────────────────
+  getAdminContactMessages: (params: { read?: boolean } = {}) =>
+    request<{ messages: AdminContactMessage[]; nextCursor: string | null }>(
+      `/admin/contact-messages${buildQuery(params)}`,
+    ),
+
+  markContactMessageRead: (id: string) =>
+    request<AdminContactMessage>(`/admin/contact-messages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ read: true }),
+    }),
+
+  replyToContactMessage: (id: string, reply: string) =>
+    request<AdminContactMessage & { sent: boolean }>(`/admin/contact-messages/${id}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ reply }),
+    }),
+
+  // ── Admin — Business Settings ────────────────────────────────────────────────
+  getAdminSettings: () =>
+    request<BusinessSettings>('/admin/business-settings'),
+
+  updateSettings: (body: Partial<BusinessSettings>) =>
+    request<BusinessSettings>('/admin/business-settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 }
 
 export { useMockApi }
