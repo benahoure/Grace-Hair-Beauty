@@ -6,16 +6,9 @@ import { ImageUploader } from '../../components/admin/ImageUploader'
 import { PageMeta } from '../../components/seo/PageMeta'
 import { api } from '../../lib/api'
 import { formatDuration, formatPrice } from '../../lib/format'
-import type { SalonService, ServiceCategory } from '../../types'
+import { SERVICE_CATEGORIES, getCategoryLabel } from '../../lib/serviceCategories'
+import type { SalonService, ServiceCategory, ServiceSubcategory } from '../../types'
 import { AdminPageShell } from './AdminDashboard'
-
-const CATEGORIES: { value: ServiceCategory; label: string }[] = [
-  { value: 'african-braids', label: 'African Braids' },
-  { value: 'natural', label: 'Natural' },
-  { value: 'sew-in', label: 'Sew-In' },
-  { value: 'men', label: "Men's" },
-  { value: 'kids', label: 'Kids' },
-]
 
 export function AdminServices() {
   const queryClient = useQueryClient()
@@ -213,8 +206,10 @@ function ServiceRow({
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-espresso">{service.name}</p>
-          <p className="mt-0.5 text-xs text-mocha/60 capitalize">
-            {service.category.replace(/-/g, ' ')} · {formatDuration(service.durationMinutes)} · from {formatPrice(service.startingPrice)}
+          <p className="mt-0.5 text-xs text-mocha/60">
+            {getCategoryLabel(service.category)}
+            {service.subcategory ? ` · ${getCategoryLabel(service.subcategory)}` : ''}
+            {` · ${formatDuration(service.durationMinutes)} · from ${formatPrice(service.startingPrice)}`}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -312,6 +307,8 @@ function ServiceDrawer({
   const [changingPhoto, setChangingPhoto] = useState(false)
   const [name, setName] = useState(service?.name ?? '')
   const [category, setCategory] = useState<ServiceCategory>(service?.category ?? 'african-braids')
+  const [subcategory, setSubcategory] = useState<ServiceSubcategory | ''>(service?.subcategory ?? '')
+  const [imagePosition, setImagePosition] = useState(service?.imagePosition ?? '')
   const [description, setDescription] = useState(service?.description ?? '')
   const [priceStr, setPriceStr] = useState(service ? String(service.startingPrice / 100) : '')
   const [durationStr, setDurationStr] = useState(service ? String(service.durationMinutes) : '')
@@ -338,12 +335,18 @@ function ServiceDrawer({
     setError(null)
     setIsSubmitting(true)
     try {
+      const subcategoryValue = subcategory || undefined
+      const imagePositionValue = imagePosition || undefined
       if (isEdit) {
         await api.updateService(service.serviceId, {
-          name, category, description, startingPrice, durationMinutes, imageUrl, featured, active,
+          name, category, subcategory: subcategoryValue, description, startingPrice, durationMinutes,
+          imageUrl, imagePosition: imagePositionValue, featured, active,
         })
       } else {
-        await api.createService({ name, category, description, startingPrice, durationMinutes, imageUrl, featured, active })
+        await api.createService({
+          name, category, subcategory: subcategoryValue, description, startingPrice, durationMinutes,
+          imageUrl, imagePosition: imagePositionValue, featured, active,
+        })
       }
       onSaved()
     } catch {
@@ -437,12 +440,55 @@ function ServiceDrawer({
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value as ServiceCategory)}
+              onChange={(e) => { setCategory(e.target.value as ServiceCategory); setSubcategory('') }}
               className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
             >
-              {CATEGORIES.map((c) => (
+              {SERVICE_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
+            </select>
+          </div>
+
+          {/* Subcategory — options driven by selected category */}
+          {(() => {
+            const subs = SERVICE_CATEGORIES.find((c) => c.value === category)?.subcategories ?? []
+            if (subs.length === 0) return null
+            return (
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+                  Subcategory
+                </label>
+                <select
+                  value={subcategory}
+                  onChange={(e) => setSubcategory(e.target.value as ServiceSubcategory | '')}
+                  className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                >
+                  <option value="">— None —</option>
+                  {subs.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            )
+          })()}
+
+          {/* Image Position */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+              Image Focus
+            </label>
+            <select
+              value={imagePosition}
+              onChange={(e) => setImagePosition(e.target.value)}
+              className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+            >
+              <option value="">Default (center)</option>
+              <option value="center center">Center</option>
+              <option value="top center">Top</option>
+              <option value="center 20%">Slightly Up</option>
+              <option value="center 35%">Slightly Down</option>
+              <option value="left center">Left</option>
+              <option value="right center">Right</option>
             </select>
           </div>
 

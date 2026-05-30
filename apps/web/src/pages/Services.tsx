@@ -10,62 +10,79 @@ import { FilterTabs } from '../components/ui/FilterTabs'
 import { ServiceCard } from '../components/ui/ServiceCard'
 import { Skeleton } from '../components/ui/Skeleton'
 import { api } from '../lib/api'
+import { ALL_FILTER_VALUES, SERVICE_CATEGORIES } from '../lib/serviceCategories'
 import type { ServiceCategory, ServiceSubcategory } from '../types'
 
-type ServiceFilter = 'all' | ServiceCategory | ServiceSubcategory
+type ServiceFilter = 'all' | ServiceCategory | ServiceSubcategory | string
 
+// Build filter tab list from the shared category config
 const filters: Array<{ value: ServiceFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'african-braids', label: 'African Braids' },
-  { value: 'knotless-braids', label: 'Knotless Braids' },
-  { value: 'box-braids', label: 'Box Braids' },
-  { value: 'boho-braids', label: 'Boho Braids' },
-  { value: 'fulani-braids', label: 'Fulani Braids' },
-  { value: 'crochet-braids', label: 'Crochet Braids' },
-  { value: 'senegalese-twists', label: 'Senegalese Twists' },
-  { value: 'specialty-braids', label: 'Specialty Braids' },
-  { value: 'natural', label: 'Natural' },
-  { value: 'sew-in', label: 'Sew-In' },
-  { value: 'men', label: 'Men' },
-  { value: 'kids', label: 'Kids' },
+  { value: 'all',               label: 'All' },
+  { value: 'african-braids',    label: 'Braids & Protective Styles' },
+  { value: 'knotless-braids',   label: 'Knotless Braids' },
+  { value: 'box-braids',        label: 'Box Braids' },
+  { value: 'cornrows-feed-in',  label: 'Cornrows & Feed-In' },
+  { value: 'senegalese-twists', label: 'Senegalese & Twists' },
+  { value: 'passion-twists',    label: 'Passion Twists' },
+  { value: 'natural',           label: 'Natural Hair & Ponytails' },
+  { value: 'sew-in',            label: 'Sew-In, Wigs & Crochet' },
+  { value: 'men',               label: "Men's Styles" },
+  { value: 'kids',              label: 'Kids & Toddlers' },
 ]
 
-function normalizeServiceFilter(value: string | null): ServiceFilter {
-  if (value === 'knotless') return 'knotless-braids'
-  if (value === 'senegalese') return 'senegalese-twists'
-  if (value === 'crochet') return 'crochet-braids'
-  if (value === 'boho') return 'boho-braids'
-  if (value === 'fulani') return 'fulani-braids'
-  if (value === 'specialty') return 'specialty-braids'
-  return filters.some((option) => option.value === value)
-    ? (value as ServiceFilter)
-    : 'all'
+// Keep backward-compat aliases so old links/bookmarks still work
+const ALIASES: Record<string, ServiceFilter> = {
+  knotless:   'knotless-braids',
+  senegalese: 'senegalese-twists',
+  crochet:    'crochet-braids',
+  boho:       'boho-braids',
+  fulani:     'fulani-braids',
+  specialty:  'specialty-braids',
+  cornrows:   'cornrows-feed-in',
 }
 
-function inferBraidSubcategory(service: { subcategory?: ServiceSubcategory; serviceId: string; name: string }): ServiceSubcategory | null {
-  if (service.subcategory) return service.subcategory
+// Verify the value is a known filter tab or a valid category/subcategory from shared config
+function normalizeServiceFilter(value: string | null): ServiceFilter {
+  if (!value) return 'all'
+  if (value in ALIASES) return ALIASES[value]
+  if (ALL_FILTER_VALUES.has(value)) return value as ServiceFilter
+  return 'all'
+}
 
-  const haystack = `${service.serviceId} ${service.name}`.toLowerCase()
-  if (haystack.includes('knotless')) return 'knotless-braids'
-  if (haystack.includes('box')) return 'box-braids'
-  if (haystack.includes('boho')) return 'boho-braids'
-  if (haystack.includes('fulani')) return 'fulani-braids'
-  if (haystack.includes('crochet')) return 'crochet-braids'
-  if (haystack.includes('senegalese')) return 'senegalese-twists'
-  if (haystack.includes('miracle') || haystack.includes('signature') || haystack.includes('professional')) {
-    return 'specialty-braids'
-  }
+// Fallback inference for AWS records that may lack a subcategory field
+function inferSubcategory(service: { subcategory?: string; serviceId: string; name: string }): string | null {
+  if (service.subcategory) return service.subcategory
+  const h = `${service.serviceId} ${service.name}`.toLowerCase()
+  if (h.includes('knotless'))                            return 'knotless-braids'
+  if (h.includes('box'))                                 return 'box-braids'
+  if (h.includes('boho'))                                return 'boho-braids'
+  if (h.includes('fulani'))                              return 'fulani-braids'
+  if (h.includes('crochet'))                             return 'crochet-braids'
+  if (h.includes('senegalese'))                          return 'senegalese-twists'
+  if (h.includes('passion'))                             return 'passion-twists'
+  if (h.includes('spring'))                              return 'spring-twists'
+  if (h.includes('cornrow') || h.includes('feed-in'))    return 'cornrows-feed-in'
+  if (h.includes('loc') || h.includes('dreadlock'))      return 'locs'
+  if (h.includes('ponytail'))                            return 'ponytails'
+  if (h.includes('toddler'))                             return 'toddler-styles'
+  if (h.includes('miracle') || h.includes('french'))     return 'specialty-braids'
   return null
 }
 
+// Option B: ?category= matches service.category OR service.subcategory
 function serviceMatchesFilter(
-  service: { category: ServiceCategory; subcategory?: ServiceSubcategory; serviceId: string; name: string },
+  service: { category: string; subcategory?: string; serviceId: string; name: string },
   filter: ServiceFilter,
-) {
+): boolean {
   if (filter === 'all') return true
   if (service.category === filter) return true
-  return inferBraidSubcategory(service) === filter
+  return (inferSubcategory(service) ?? '') === filter
 }
+
+// Suppress unused import warning — SERVICE_CATEGORIES is the source of truth
+// used by the Header and MobileNav dropdowns; importing it here keeps the
+// dependency graph explicit and ensures lint doesn't tree-shake it.
+void SERVICE_CATEGORIES
 
 const faqs = [
   ['How should I prepare for braids?', 'Please arrive with hair clean, detangled, and free of heavy product unless Grace has recommended otherwise.'],

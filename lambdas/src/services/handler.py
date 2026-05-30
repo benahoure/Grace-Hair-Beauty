@@ -9,6 +9,14 @@ from common.logger import logger
 from common.response import bad_request, internal_error, ok, options
 
 VALID_CATEGORIES = {"african-braids", "natural", "sew-in", "men", "kids"}
+VALID_SUBCATEGORIES = {
+    "knotless-braids", "box-braids", "boho-braids", "specialty-braids",
+    "cornrows-feed-in", "senegalese-twists", "passion-twists", "spring-twists",
+    "locs", "ponytails", "natural-styling",
+    "kids-braids", "kids-twists", "kids-crochet", "toddler-styles",
+    "fulani-braids", "crochet-braids",  # legacy subcategory IDs
+}
+VALID_FILTER_VALUES = VALID_CATEGORIES | VALID_SUBCATEGORIES
 
 
 @logger.inject_lambda_context(log_event=False)
@@ -19,7 +27,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
         params = query_params(event)
         category = params.get("category")
         featured = params.get("featured")
-        if category and category not in VALID_CATEGORIES:
+        if category and category not in VALID_FILTER_VALUES:
             return bad_request("Invalid service category.")
 
         filter_expression = active_filter()
@@ -27,7 +35,10 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             filter_expression = filter_expression & bool_filter("featured", True)
         items, _ = scan_items(get_config().table_services, filter_expression=filter_expression, limit=100)
         if category:
-            items = [item for item in items if item.get("category") == category]
+            items = [
+                item for item in items
+                if item.get("category") == category or item.get("subcategory") == category
+            ]
         return ok(
             {"services": sorted(items, key=lambda item: item.get("name", ""))},
             cache_control="public, max-age=300",

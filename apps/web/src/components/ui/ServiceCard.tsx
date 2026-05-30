@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { formatPrice } from '../../lib/format'
+import { formatDuration, formatPrice } from '../../lib/format'
 import type { SalonService } from '../../types'
 
 interface ServiceCardProps {
@@ -68,9 +68,16 @@ export function ServiceCard({ service }: ServiceCardProps) {
           </p>
         </div>
         <div className="flex items-center justify-between gap-4 border-t border-cream/15 pt-3">
-          <span className="text-sm font-semibold text-cream/90">
-            Starting at {formatPrice(service.startingPrice)}
-          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold text-cream/90">
+              Starting at {formatPrice(service.startingPrice)}
+            </span>
+            {service.durationMinutes > 0 && (
+              <span className="text-[0.7rem] text-cream/50">
+                {formatDuration(service.durationMinutes)}
+              </span>
+            )}
+          </div>
           <Link
             className="text-xs font-bold uppercase tracking-[0.10em] text-gold-light transition-colors hover:text-gold"
             to={`/book?service=${service.serviceId}`}

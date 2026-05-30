@@ -93,11 +93,11 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
 
   if (path.startsWith('/services')) {
     const url = new URL(path, window.location.origin)
-    const category = url.searchParams.get('category') as ServiceCategory | null
+    const category = url.searchParams.get('category')
     const featured = url.searchParams.get('featured')
     const services = mockServices.filter((service) => {
       if (!service.active) return false
-      if (category && service.category !== category) return false
+      if (category && service.category !== category && service.subcategory !== category) return false
       if (featured === 'true' && !service.featured) return false
       return true
     })
@@ -246,7 +246,7 @@ export const api = {
   getAdminServices: () =>
     request<{ services: SalonService[]; nextCursor: string | null }>('/admin/services'),
 
-  updateService: (id: string, body: Partial<Pick<SalonService, 'active' | 'featured' | 'name' | 'startingPrice' | 'durationMinutes' | 'description' | 'category' | 'imageUrl'>> & { addImage?: string }) =>
+  updateService: (id: string, body: Partial<Pick<SalonService, 'active' | 'featured' | 'name' | 'startingPrice' | 'durationMinutes' | 'description' | 'category' | 'subcategory' | 'imageUrl' | 'imagePosition'>> & { addImage?: string }) =>
     request<SalonService>(`/admin/services/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -335,7 +335,7 @@ export const api = {
     }
   },
 
-  createService: (body: Omit<SalonService, 'serviceId' | 'bookingCount' | 'priceUnit' | 'images' | 'imagePosition' | 'subcategory'>) =>
+  createService: (body: Omit<SalonService, 'serviceId' | 'bookingCount' | 'priceUnit' | 'images'>) =>
     request<SalonService>('/admin/services', {
       method: 'POST',
       body: JSON.stringify(body),

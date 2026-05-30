@@ -12,7 +12,6 @@ import { ServiceCard } from '../components/ui/ServiceCard'
 import { Skeleton } from '../components/ui/Skeleton'
 import { StarRating } from '../components/ui/StarRating'
 import { api } from '../lib/api'
-import { defaultBusinessSettings } from '../lib/mockData'
 import type { PortfolioItem } from '../types'
 import { useBusinessSettings } from '../hooks/useBusinessSettings'
 

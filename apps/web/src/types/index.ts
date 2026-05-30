@@ -4,10 +4,21 @@ export type ServiceSubcategory =
   | 'knotless-braids'
   | 'box-braids'
   | 'boho-braids'
+  | 'specialty-braids'
+  | 'cornrows-feed-in'
+  | 'senegalese-twists'
+  | 'passion-twists'
+  | 'spring-twists'
+  | 'locs'
+  | 'ponytails'
+  | 'natural-styling'
+  | 'kids-braids'
+  | 'kids-twists'
+  | 'kids-crochet'
+  | 'toddler-styles'
+  // legacy — kept for backward compatibility with existing AWS records
   | 'fulani-braids'
   | 'crochet-braids'
-  | 'senegalese-twists'
-  | 'specialty-braids'
 
 export type PortfolioCategory =
   | 'knotless'
