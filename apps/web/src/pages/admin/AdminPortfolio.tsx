@@ -230,6 +230,11 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
   const [portfolioCategory, setPortfolioCategory] = useState<PortfolioCategory>('knotless')
   const [featured, setFeatured] = useState(false)
 
+  // Reset uploaded URL when destination changes — avoids CDN folder mismatch
+  useEffect(() => {
+    setImageUrl('')
+  }, [destination])
+
   // "add to existing service" fields
   const [selectedServiceId, setSelectedServiceId] = useState('')
 
@@ -480,6 +485,7 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
                 </label>
                 <textarea
                   required={destination === 'new-service'}
+                  minLength={10}
                   rows={2}
                   value={serviceDescription}
                   onChange={(e) => setServiceDescription(e.target.value)}
