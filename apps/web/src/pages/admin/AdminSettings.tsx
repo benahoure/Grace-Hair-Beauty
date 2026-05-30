@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
+import { ImageUploader } from '../../components/admin/ImageUploader'
 import { PageMeta } from '../../components/seo/PageMeta'
 import { api } from '../../lib/api'
 import { defaultBusinessSettings } from '../../lib/mockData'
@@ -63,6 +64,14 @@ export function AdminSettings() {
       queryClient.invalidateQueries({ queryKey: ['business-settings'] })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
+    },
+  })
+
+  const photoMutation = useMutation({
+    mutationFn: (body: Partial<BusinessSettings>) => api.updateSettings(body),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['admin-settings'], updated)
+      queryClient.invalidateQueries({ queryKey: ['business-settings'] })
     },
   })
 
@@ -288,6 +297,69 @@ export function AdminSettings() {
             )}
           </div>
         </form>
+
+        {/* Photos — saved immediately on upload, not part of the main form */}
+        <div className="mt-6 space-y-6">
+          <section className="rounded-xl border border-cream-border bg-paper p-6 shadow-soft">
+            <h2 className="mb-1 text-xs font-bold uppercase tracking-widest text-cocoa/60">Photos</h2>
+            <p className="mb-5 text-xs text-mocha/50">
+              Uploaded photos save automatically. They appear on the About, Home, and Contact pages.
+            </p>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-cocoa">
+                  Founder Photo
+                  <span className="ml-2 font-normal normal-case tracking-normal text-mocha/40">
+                    About & Home pages · 4:5 portrait
+                  </span>
+                </p>
+                {settings.founderImageUrl && (
+                  <img
+                    src={settings.founderImageUrl}
+                    alt="Current founder photo"
+                    className="mb-3 aspect-[4/5] w-full max-w-[160px] rounded-xl object-cover shadow"
+                  />
+                )}
+                <ImageUploader
+                  folder="portfolio"
+                  aspectRatio={4 / 5}
+                  label="Upload founder photo"
+                  hint="4:5 portrait · JPG or WebP · max 10 MB"
+                  onUploaded={(url) => photoMutation.mutate({ founderImageUrl: url })}
+                />
+                {photoMutation.isError && (
+                  <p className="mt-1 text-xs text-error">Failed to save photo. Please try again.</p>
+                )}
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-cocoa">
+                  Contact Page Photo
+                  <span className="ml-2 font-normal normal-case tracking-normal text-mocha/40">
+                    Contact page · 3:4 portrait
+                  </span>
+                </p>
+                {settings.contactImageUrl && (
+                  <img
+                    src={settings.contactImageUrl}
+                    alt="Current contact photo"
+                    className="mb-3 aspect-[3/4] w-full max-w-[160px] rounded-xl object-cover shadow"
+                  />
+                )}
+                <ImageUploader
+                  folder="portfolio"
+                  aspectRatio={3 / 4}
+                  label="Upload contact photo"
+                  hint="3:4 portrait · JPG or WebP · max 10 MB"
+                  onUploaded={(url) => photoMutation.mutate({ contactImageUrl: url })}
+                />
+                {photoMutation.isError && (
+                  <p className="mt-1 text-xs text-error">Failed to save photo. Please try again.</p>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
       </AdminPageShell>
     </>
   )

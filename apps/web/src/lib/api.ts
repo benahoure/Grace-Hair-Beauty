@@ -188,13 +188,13 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
 
 export const api = {
   // ── Public ──────────────────────────────────────────────────────────────────
-  getBusinessSettings: () => request<BusinessSettings>('/business-settings'),
+  getBusinessSettings: () => request<BusinessSettings>('/business-settings', { cache: 'no-cache' }),
 
   getServices: (params: { category?: ServiceCategory; featured?: boolean } = {}) => {
     const search = new URLSearchParams()
     if (params.category) search.set('category', params.category)
     if (params.featured) search.set('featured', 'true')
-    return request<{ services: SalonService[] }>(`/services${search.size ? `?${search}` : ''}`)
+    return request<{ services: SalonService[] }>(`/services${search.size ? `?${search}` : ''}`, { cache: 'no-cache' })
   },
 
   getPortfolio: (params: { category?: PortfolioCategory } = {}) => {
@@ -202,11 +202,12 @@ export const api = {
     if (params.category) search.set('category', params.category)
     return request<{ items: PortfolioItem[]; nextCursor: string | null }>(
       `/portfolio${search.size ? `?${search}` : ''}`,
+      { cache: 'no-cache' },
     )
   },
 
   getReviews: () =>
-    request<{ reviews: Review[]; aggregates: ReviewAggregates; nextCursor: string | null }>('/reviews'),
+    request<{ reviews: Review[]; aggregates: ReviewAggregates; nextCursor: string | null }>('/reviews', { cache: 'no-cache' }),
 
   createAppointment: (body: AppointmentRequest) =>
     request<{ appointmentId: string; status: string; message: string }>('/appointments', {

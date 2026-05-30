@@ -44,13 +44,15 @@ class BusinessSettingsPatch(HtmlStrippingModelMixin, BaseModel):
     googleReviewUrl: str | None = None
     announcementBanner: str | None = Field(default=None, max_length=200)
     bookingNotice: str | None = Field(default=None, max_length=300)
+    founderImageUrl: str | None = None
+    contactImageUrl: str | None = None
 
     @field_validator("phone")
     @classmethod
     def validate_phone(cls, value: str | None) -> str | None:
         return normalize_us_phone(value) if value else value
 
-    @field_validator("googleMapsUrl", "googleReviewUrl")
+    @field_validator("googleMapsUrl", "googleReviewUrl", "founderImageUrl", "contactImageUrl")
     @classmethod
     def validate_urls(cls, value: str | None) -> str | None:
         return https_url(value) if value else value

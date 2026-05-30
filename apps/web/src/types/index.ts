@@ -53,6 +53,8 @@ export interface BusinessSettings {
   googleReviewUrl: string
   announcementBanner: string | null
   bookingNotice: string
+  founderImageUrl?: string | null
+  contactImageUrl?: string | null
 }
 
 export interface SalonService {

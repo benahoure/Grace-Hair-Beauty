@@ -294,11 +294,24 @@ def patch_service(event: dict, admin_user_id: str) -> dict:
 
 def delete_service(event: dict, admin_user_id: str) -> dict:
     service_id = resource_id(event, "serviceId")
+    existing = get_item(get_config().table_services, {"serviceId": service_id})
+    if not existing:
+        return not_found("Service not found.")
+    if not existing.get("active", True):
+        # already inactive — permanently remove
+        delete_item(get_config().table_services, {"serviceId": service_id})
+        audit(admin_user_id, "service.deleted_permanently", "service", service_id)
+        return ok({"message": "Service permanently deleted."})
+    # active — soft-delete (deactivate and remove from homepage)
     try:
-        update_item(get_config().table_services, {"serviceId": service_id}, {"active": False, "updatedAt": utc_now()})
+        update_item(
+            get_config().table_services,
+            {"serviceId": service_id},
+            {"active": False, "activeKey": "false", "featured": False, "updatedAt": utc_now()},
+        )
     except NotFoundError:
         return not_found("Service not found.")
-    audit(admin_user_id, "service.deleted", "service", service_id)
+    audit(admin_user_id, "service.deactivated", "service", service_id)
     return ok({"message": "Service deactivated."})
 
 

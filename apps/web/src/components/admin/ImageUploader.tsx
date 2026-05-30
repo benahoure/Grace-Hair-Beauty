@@ -8,13 +8,13 @@ import { api } from '../../lib/api'
 
 const MAX_SIZE_MB = 10
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-const CROP_ASPECT = 4 / 5
 
 interface ImageUploaderProps {
   folder: 'services' | 'portfolio'
   onUploaded: (publicUrl: string) => void
   label?: string
   hint?: string
+  aspectRatio?: number
 }
 
 async function getCroppedBlob(image: HTMLImageElement, pixelCrop: PixelCrop, mimeType: string): Promise<Blob> {
@@ -50,7 +50,9 @@ export function ImageUploader({
   onUploaded,
   label = 'Click to upload image',
   hint,
+  aspectRatio = 4 / 5,
 }: ImageUploaderProps) {
+  const CROP_ASPECT = aspectRatio
   const [preview, setPreview] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)

@@ -12,7 +12,9 @@ import { ServiceCard } from '../components/ui/ServiceCard'
 import { Skeleton } from '../components/ui/Skeleton'
 import { StarRating } from '../components/ui/StarRating'
 import { api } from '../lib/api'
+import { defaultBusinessSettings } from '../lib/mockData'
 import type { PortfolioItem } from '../types'
+import { useBusinessSettings } from '../hooks/useBusinessSettings'
 
 const trustBandItems = [
   {
@@ -34,6 +36,8 @@ const trustBandItems = [
 
 export function Home() {
   const [activePortfolioItem, setActivePortfolioItem] = useState<PortfolioItem | null>(null)
+  const { data: settingsData } = useBusinessSettings()
+  const founderImage = settingsData?.founderImageUrl || '/about-us/founder-ariane.webp'
   const servicesQuery = useQuery({
     queryKey: ['services', 'featured'],
     queryFn: () => api.getServices({ featured: true }),
@@ -161,7 +165,7 @@ export function Home() {
         <div className="container-page grid gap-10 md:grid-cols-[0.8fr_1fr] md:items-center">
           <div className="aspect-[4/5] overflow-hidden rounded-card">
             <img
-              src="/about-us/founder-ariane.webp"
+              src={founderImage}
               alt="Ariane Essay, founder of Grace Hair Beauty in Indianapolis"
               className="h-full w-full object-cover object-top"
             />

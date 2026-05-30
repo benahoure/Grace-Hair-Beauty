@@ -132,7 +132,7 @@ export function Contact() {
             {/* ── LEFT: founder image + action overlay ───────────────── */}
             <div className="relative min-h-[520px] lg:min-h-0">
               <img
-                src="/contact-us/founder-ariane-about-us.webp"
+                src={settings.contactImageUrl || '/contact-us/founder-ariane-about-us.webp'}
                 alt="Ariane, founder of Grace Hair Beauty"
                 className="absolute inset-0 h-full w-full object-cover"
                 style={{ objectPosition: '50% 8%' }}

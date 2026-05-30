@@ -1,5 +1,7 @@
 import { PageHero } from '../components/hero/PageHero'
 import { PageMeta } from '../components/seo/PageMeta'
+import { useBusinessSettings } from '../hooks/useBusinessSettings'
+import { defaultBusinessSettings } from '../lib/mockData'
 
 const values = [
   ['Expertise', '15+ years of professional training and real-world experience.'],
@@ -8,6 +10,10 @@ const values = [
 ]
 
 export function About() {
+  const { data } = useBusinessSettings()
+  const settings = data ?? defaultBusinessSettings
+  const founderImage = settings.founderImageUrl || '/about-us/founder-ariane.webp'
+
   return (
     <>
       <PageMeta
@@ -20,7 +26,7 @@ export function About() {
         title="More Than a Salon."
         italicTitle="A Place That Sees You."
         description="Grace Hair Beauty was built on a simple belief: every person deserves to walk out of a salon feeling genuinely beautiful."
-        image="/about-us/founder-ariane.webp"
+        image={founderImage}
         imageAlt="Ariane Essay, founder of Grace Hair Beauty in Indianapolis"
         imagePosition="center top"
       />
