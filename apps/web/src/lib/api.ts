@@ -140,6 +140,11 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
 
   // ── Admin routes ────────────────────────────────────────────────────────────
 
+  if (path === '/admin/upload-url' && method === 'POST') {
+    const key = `services/${crypto.randomUUID()}/mock.jpg`
+    return { uploadUrl: 'https://mock-upload-url', key, publicUrl: `https://cdn.example.com/${key}` } as T
+  }
+
   if (path.startsWith('/admin/appointments')) {
     if (method === 'PATCH') {
       return { appointmentId: 'mock', status: 'confirmed', serviceName: 'Mock Service' } as T
@@ -154,12 +159,14 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
   }
 
   if (path.startsWith('/admin/services')) {
+    if (method === 'POST') return { ...mockServices[0], serviceId: crypto.randomUUID() } as T
     if (method === 'PATCH') return { ...mockServices[0] } as T
     if (method === 'DELETE') return { message: 'Service deactivated.' } as T
     return { services: mockServices, nextCursor: null } as T
   }
 
   if (path.startsWith('/admin/portfolio')) {
+    if (method === 'POST') return { ...mockPortfolio[0], styleId: crypto.randomUUID() } as T
     if (method === 'PATCH') return { ...mockPortfolio[0] } as T
     if (method === 'DELETE') return { message: 'Portfolio item deleted.' } as T
     return { portfolio: mockPortfolio, nextCursor: null } as T
@@ -238,7 +245,7 @@ export const api = {
   getAdminServices: () =>
     request<{ services: SalonService[]; nextCursor: string | null }>('/admin/services'),
 
-  updateService: (id: string, body: Partial<Pick<SalonService, 'active' | 'featured' | 'name' | 'startingPrice' | 'durationMinutes' | 'description'>>) =>
+  updateService: (id: string, body: Partial<Pick<SalonService, 'active' | 'featured' | 'name' | 'startingPrice' | 'durationMinutes' | 'description' | 'category' | 'imageUrl'>> & { addImage?: string }) =>
     request<SalonService>(`/admin/services/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -298,6 +305,44 @@ export const api = {
   updateSettings: (body: Partial<BusinessSettings>) =>
     request<BusinessSettings>('/admin/business-settings', {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  // ── Admin — Asset Upload ─────────────────────────────────────────────────────
+  getUploadUrl: (folder: 'services' | 'portfolio', filename: string, contentType: string) =>
+    request<{ uploadUrl: string; key: string; publicUrl: string }>('/admin/upload-url', {
+      method: 'POST',
+      body: JSON.stringify({ folder, filename, contentType }),
+    }),
+
+  uploadToPresignedUrl: async (uploadUrl: string, file: File): Promise<void> => {
+    let response: Response
+    try {
+      response = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      })
+    } catch (netErr) {
+      console.error('[Upload] Network error:', netErr)
+      throw new Error('Network error — check browser console for details.')
+    }
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      console.error('[Upload] S3 error:', response.status, body)
+      throw new Error(`Upload failed (${response.status}) — check browser console.`)
+    }
+  },
+
+  createService: (body: Omit<SalonService, 'serviceId' | 'bookingCount' | 'priceUnit' | 'images' | 'imagePosition' | 'subcategory'>) =>
+    request<SalonService>('/admin/services', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  createPortfolioItem: (body: Omit<PortfolioItem, 'styleId' | 'createdAt'>) =>
+    request<PortfolioItem>('/admin/portfolio', {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
 }

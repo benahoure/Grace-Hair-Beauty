@@ -64,3 +64,11 @@ def validate_cdn_url(value: str, prefix: str) -> str:
     if not value.startswith(allowed_prefix):
         raise ValueError(f"Image URL must start with {allowed_prefix}")
     return value
+
+
+def validate_cdn_url_any(value: str) -> str:
+    """Accept any CDN-hosted URL regardless of folder prefix."""
+    config = get_config()
+    if not value.startswith(f"{config.cdn_base_url}/"):
+        raise ValueError(f"Image URL must be hosted on the CDN ({config.cdn_base_url})")
+    return value

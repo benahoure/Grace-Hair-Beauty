@@ -1,36 +1,75 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { ImageUploader } from '../../components/admin/ImageUploader'
 import { PageMeta } from '../../components/seo/PageMeta'
 import { api } from '../../lib/api'
-import { formatPrice } from '../../lib/format'
-import type { SalonService } from '../../types'
+import { formatDuration, formatPrice } from '../../lib/format'
+import type { SalonService, ServiceCategory } from '../../types'
 import { AdminPageShell } from './AdminDashboard'
+
+const CATEGORIES: { value: ServiceCategory; label: string }[] = [
+  { value: 'african-braids', label: 'African Braids' },
+  { value: 'natural', label: 'Natural' },
+  { value: 'sew-in', label: 'Sew-In' },
+  { value: 'men', label: "Men's" },
+  { value: 'kids', label: 'Kids' },
+]
 
 export function AdminServices() {
   const queryClient = useQueryClient()
+  const [showCreate, setShowCreate] = useState(false)
+  const [editingService, setEditingService] = useState<SalonService | null>(null)
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['admin-services'],
     queryFn: api.getAdminServices,
   })
 
-  const updateMutation = useMutation({
+  const [mutationError, setMutationError] = useState<string | null>(null)
+
+  const toggleMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<Pick<SalonService, 'active' | 'featured'>> }) =>
       api.updateService(id, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-services'] }),
+    onSuccess: () => {
+      setMutationError(null)
+      queryClient.invalidateQueries({ queryKey: ['admin-services'] })
+    },
+    onError: () => setMutationError('Update failed. Please try again.'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteService(id),
+    onSuccess: () => {
+      setMutationError(null)
+      queryClient.invalidateQueries({ queryKey: ['admin-services'] })
+    },
+    onError: () => setMutationError('Delete failed. Please try again.'),
   })
 
   const services = data?.services ?? []
   const active = services.filter((s) => s.active)
   const inactive = services.filter((s) => !s.active)
+  const isMutating = toggleMutation.isPending || deleteMutation.isPending
 
   return (
     <>
       <PageMeta title="Services | Admin" description="" canonical="" />
       <AdminPageShell
         title="Services"
-        intro="Toggle services active or featured. Active services appear on the public booking page."
+        intro="Manage salon services. Active services appear on the public booking page. Featured services are highlighted on the homepage."
+        action={
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #080610, #1A0F24)', color: '#FAF6F0' }}
+          >
+            <Plus size={16} />
+            Add Service
+          </button>
+        }
       >
         {isPending && (
           <div className="grid gap-3">
@@ -44,25 +83,62 @@ export function AdminServices() {
           <p className="text-sm text-error">Failed to load services. Please refresh.</p>
         )}
 
+        {mutationError && (
+          <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-error">{mutationError}</p>
+        )}
+
         {!isPending && !isError && (
           <div className="space-y-6">
             <ServiceSection
               title="Active services"
               services={active}
-              onToggle={(id, body) => updateMutation.mutate({ id, body })}
-              isUpdating={updateMutation.isPending}
+              onToggle={(id, body) => toggleMutation.mutate({ id, body })}
+              onEdit={setEditingService}
+              onDelete={(id, name) => {
+                if (window.confirm(`Deactivate "${name}"? It will be removed from the public site.`)) {
+                  deleteMutation.mutate(id)
+                }
+              }}
+              isUpdating={isMutating}
             />
             {inactive.length > 0 && (
               <ServiceSection
                 title="Inactive services"
                 services={inactive}
-                onToggle={(id, body) => updateMutation.mutate({ id, body })}
-                isUpdating={updateMutation.isPending}
+                onToggle={(id, body) => toggleMutation.mutate({ id, body })}
+                onEdit={setEditingService}
+                onDelete={(id, name) => {
+                  if (window.confirm(`Permanently delete "${name}"? This cannot be undone.`)) {
+                    deleteMutation.mutate(id)
+                  }
+                }}
+                isUpdating={isMutating}
               />
             )}
           </div>
         )}
       </AdminPageShell>
+
+      {showCreate && (
+        <ServiceDrawer
+          onClose={() => setShowCreate(false)}
+          onSaved={() => {
+            setShowCreate(false)
+            queryClient.invalidateQueries({ queryKey: ['admin-services'] })
+          }}
+        />
+      )}
+
+      {editingService && (
+        <ServiceDrawer
+          service={editingService}
+          onClose={() => setEditingService(null)}
+          onSaved={() => {
+            setEditingService(null)
+            queryClient.invalidateQueries({ queryKey: ['admin-services'] })
+          }}
+        />
+      )}
     </>
   )
 }
@@ -71,11 +147,15 @@ function ServiceSection({
   title,
   services,
   onToggle,
+  onEdit,
+  onDelete,
   isUpdating,
 }: {
   title: string
   services: SalonService[]
   onToggle: (id: string, body: Partial<Pick<SalonService, 'active' | 'featured'>>) => void
+  onEdit: (service: SalonService) => void
+  onDelete: (id: string, name: string) => void
   isUpdating: boolean
 }) {
   if (services.length === 0) return null
@@ -89,6 +169,8 @@ function ServiceSection({
             key={service.serviceId}
             service={service}
             onToggle={onToggle}
+            onEdit={onEdit}
+            onDelete={onDelete}
             isUpdating={isUpdating}
           />
         ))}
@@ -100,10 +182,14 @@ function ServiceSection({
 function ServiceRow({
   service,
   onToggle,
+  onEdit,
+  onDelete,
   isUpdating,
 }: {
   service: SalonService
   onToggle: (id: string, body: Partial<Pick<SalonService, 'active' | 'featured'>>) => void
+  onEdit: (service: SalonService) => void
+  onDelete: (id: string, name: string) => void
   isUpdating: boolean
 }) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -122,14 +208,13 @@ function ServiceRow({
               src={service.imageUrl}
               alt={service.name}
               className="h-12 w-12 object-cover transition-opacity hover:opacity-80"
-              style={{ imageRendering: 'auto' }}
             />
           </button>
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-espresso">{service.name}</p>
           <p className="mt-0.5 text-xs text-mocha/60 capitalize">
-            {service.category.replace(/-/g, ' ')} · {service.durationMinutes} min · from {formatPrice(service.startingPrice)}
+            {service.category.replace(/-/g, ' ')} · {formatDuration(service.durationMinutes)} · from {formatPrice(service.startingPrice)}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -146,6 +231,24 @@ function ServiceRow({
             onChange={(v) => onToggle(service.serviceId, { active: v, ...(v ? {} : { featured: false }) })}
             activeColor="green"
           />
+          <button
+            type="button"
+            disabled={isUpdating}
+            onClick={() => onEdit(service)}
+            className="rounded p-1 text-mocha/40 transition-colors hover:text-mocha disabled:opacity-40"
+            aria-label="Edit service"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            type="button"
+            disabled={isUpdating}
+            onClick={() => onDelete(service.serviceId, service.name)}
+            className="rounded p-1 text-error/50 transition-colors hover:text-error disabled:opacity-40"
+            aria-label="Delete service"
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
       </div>
 
@@ -174,10 +277,7 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
       onClick={onClose}
     >
-      <div
-        className="relative max-h-[90vh] max-w-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="relative max-h-[90vh] max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <img
           src={src}
           alt={alt}
@@ -193,6 +293,259 @@ function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClos
         </button>
       </div>
     </div>
+  )
+}
+
+// Shared drawer used for both Create and Edit
+function ServiceDrawer({
+  service,
+  onClose,
+  onSaved,
+}: {
+  service?: SalonService
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const isEdit = !!service
+
+  const [imageUrl, setImageUrl] = useState(service?.imageUrl ?? '')
+  const [changingPhoto, setChangingPhoto] = useState(false)
+  const [name, setName] = useState(service?.name ?? '')
+  const [category, setCategory] = useState<ServiceCategory>(service?.category ?? 'african-braids')
+  const [description, setDescription] = useState(service?.description ?? '')
+  const [priceStr, setPriceStr] = useState(service ? String(service.startingPrice / 100) : '')
+  const [durationStr, setDurationStr] = useState(service ? String(service.durationMinutes) : '')
+  const [featured, setFeatured] = useState(service?.featured ?? false)
+  const [active, setActive] = useState(service?.active ?? true)
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!imageUrl) { setError('Please upload a service image.'); return }
+    const startingPrice = Math.round(parseFloat(priceStr) * 100)
+    const durationMinutes = parseInt(durationStr, 10)
+    if (isNaN(startingPrice) || startingPrice <= 0) { setError('Enter a valid price.'); return }
+    if (isNaN(durationMinutes) || durationMinutes <= 0) { setError('Enter a valid duration.'); return }
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      if (isEdit) {
+        await api.updateService(service.serviceId, {
+          name, category, description, startingPrice, durationMinutes, imageUrl, featured, active,
+        })
+      } else {
+        await api.createService({ name, category, description, startingPrice, durationMinutes, imageUrl, featured, active })
+      }
+      onSaved()
+    } catch {
+      setError(`Failed to ${isEdit ? 'update' : 'create'} service. Please try again.`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div
+        className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col overflow-y-auto shadow-2xl"
+        style={{ background: '#FAF6F0' }}
+      >
+        {/* Header */}
+        <div
+          className="flex shrink-0 items-center justify-between px-6 py-5"
+          style={{ background: 'linear-gradient(135deg, #080610, #0E0A14)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          <div>
+            <p className="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-gold-light/70">Services</p>
+            <h2 className="mt-0.5 text-lg font-semibold text-cream">
+              {isEdit ? 'Edit Service' : 'Add New Service'}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/10"
+            style={{ color: 'rgba(250,246,240,0.6)' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-5 px-6 py-6">
+          {/* Photo */}
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+              Service Photo <span className="text-error">*</span>
+            </label>
+
+            {isEdit && imageUrl && !changingPhoto ? (
+              <div className="relative overflow-hidden rounded-xl">
+                <img
+                  src={imageUrl}
+                  alt={name}
+                  className="h-40 w-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setChangingPhoto(true)}
+                  className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity hover:opacity-100"
+                >
+                  <span className="rounded-full bg-white/95 px-4 py-1.5 text-xs font-bold text-espresso shadow">
+                    Change photo
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <ImageUploader
+                folder="services"
+                onUploaded={(url) => { setImageUrl(url); setChangingPhoto(false) }}
+                label="Upload service photo"
+                hint="4:5 portrait crop · JPG, PNG, WebP · max 10 MB"
+              />
+            )}
+          </div>
+
+          {/* Name */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+              Service Name <span className="text-error">*</span>
+            </label>
+            <input
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Knotless Braids — Waist Length"
+              className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+              Category <span className="text-error">*</span>
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ServiceCategory)}
+              className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+              Description <span className="text-error">*</span>
+            </label>
+            <textarea
+              required
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe this service for clients…"
+              className="w-full resize-none rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+            />
+          </div>
+
+          {/* Price + Duration */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+                Starting Price ($) <span className="text-error">*</span>
+              </label>
+              <input
+                required
+                type="number"
+                min="1"
+                step="0.01"
+                value={priceStr}
+                onChange={(e) => setPriceStr(e.target.value)}
+                placeholder="150.00"
+                className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
+                Duration (min) <span className="text-error">*</span>
+              </label>
+              <input
+                required
+                type="number"
+                min="15"
+                max="720"
+                value={durationStr}
+                onChange={(e) => setDurationStr(e.target.value)}
+                placeholder="180"
+                className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+              />
+            </div>
+          </div>
+
+          {/* Active + Featured */}
+          <div className="flex gap-6 rounded-xl border border-cream-border bg-white px-4 py-3.5">
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(e) => { setActive(e.target.checked); if (!e.target.checked) setFeatured(false) }}
+                className="h-4 w-4 rounded accent-green-700"
+              />
+              <span className="text-sm font-semibold text-espresso">Active</span>
+              <span className="text-xs text-mocha/50">(live on site)</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={featured}
+                disabled={!active}
+                onChange={(e) => setFeatured(e.target.checked)}
+                className="h-4 w-4 rounded accent-yellow-700 disabled:opacity-40"
+              />
+              <span className="text-sm font-semibold text-espresso">Featured</span>
+              <span className="text-xs text-mocha/50">(homepage)</span>
+            </label>
+          </div>
+
+          {error && (
+            <p className="rounded-lg bg-red-50 px-4 py-2.5 text-sm text-error">{error}</p>
+          )}
+
+          <div className="mt-auto flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-xl border border-cream-border py-3 text-sm font-semibold text-mocha transition-colors hover:bg-cream-deep"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !imageUrl}
+              className="flex-1 rounded-xl py-3 text-sm font-semibold text-cream transition-all disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg, #080610, #1A0F24)' }}
+            >
+              {isSubmitting
+                ? (isEdit ? 'Saving…' : 'Creating…')
+                : (isEdit ? 'Save Changes' : 'Create Service')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
   )
 }
 

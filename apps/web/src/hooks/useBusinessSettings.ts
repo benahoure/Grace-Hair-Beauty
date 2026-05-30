@@ -6,6 +6,6 @@ export function useBusinessSettings() {
   return useQuery({
     queryKey: ['business-settings'],
     queryFn: api.getBusinessSettings,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
   })
 }

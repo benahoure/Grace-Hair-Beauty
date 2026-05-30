@@ -6,7 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import type { z } from 'zod'
 
 import { ApiRequestError, api } from '../../lib/api'
-import { formatPrice } from '../../lib/format'
+import { formatDuration, formatPrice } from '../../lib/format'
 import { mockPortfolio } from '../../lib/mockData'
 import { bookingSchema, tomorrowInSalonTimeZone } from '../../lib/validators'
 import type { AppointmentRequest, ServiceCategory } from '../../types'
@@ -645,7 +645,7 @@ export function BookingForm() {
                             )}
                           </span>
                           <span className="mt-1 text-xs text-gold-dark">
-                            Starting at {formatPrice(svc.startingPrice)}&nbsp;&middot;&nbsp;{svc.durationMinutes}&nbsp;min
+                            Starting at {formatPrice(svc.startingPrice)}&nbsp;&middot;&nbsp;{formatDuration(svc.durationMinutes)}
                           </span>
                         </button>
                       )
@@ -661,7 +661,7 @@ export function BookingForm() {
                     <p className="mt-1 font-semibold text-cocoa">{selectedService.name}</p>
                     <p className="mt-0.5 text-sm text-espresso">
                       Starting at {formatPrice(selectedService.startingPrice)}
-                      &nbsp;&middot;&nbsp;{selectedService.durationMinutes} min
+                      &nbsp;&middot;&nbsp;{formatDuration(selectedService.durationMinutes)}
                     </p>
                   </div>
                 )}

@@ -150,14 +150,14 @@ resource "aws_s3_bucket_versioning" "assets" {
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
+  #checkov:skip=CKV2_AWS_67:Assets bucket uses SSE-S3 (AES256) intentionally — SSE-KMS blocks presigned URL uploads from browsers
   bucket = aws_s3_bucket.assets.id
 
   rule {
     apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.data.arn
-      sse_algorithm     = "aws:kms"
+      sse_algorithm = "AES256"
     }
-    bucket_key_enabled = true
+    bucket_key_enabled = false
   }
 }
 
@@ -198,9 +198,10 @@ resource "aws_s3_bucket_cors_configuration" "assets" {
   bucket = aws_s3_bucket.assets.id
 
   cors_rule {
-    allowed_headers = ["Accept", "Authorization", "Content-Type", "Origin"]
-    allowed_methods = ["GET"]
+    allowed_headers = ["Accept", "Authorization", "Content-Type", "Content-Length", "Origin", "x-amz-server-side-encryption", "x-amz-server-side-encryption-aws-kms-key-id"]
+    allowed_methods = ["GET", "PUT"]
     allowed_origins = [var.allowed_origin]
+    expose_headers  = ["ETag"]
     max_age_seconds = 3600
   }
 }

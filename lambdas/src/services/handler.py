@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from aws_lambda_powertools.utilities.typing import LambdaContext
-from boto3.dynamodb.conditions import Attr
 
 from common.config import get_config
-from common.dynamo import active_filter, scan_items
+from common.dynamo import active_filter, bool_filter, scan_items
 from common.http import method, query_params
 from common.logger import logger
 from common.response import bad_request, internal_error, ok, options
@@ -25,7 +24,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
 
         filter_expression = active_filter()
         if featured == "true":
-            filter_expression = filter_expression & Attr("featured").eq(True)
+            filter_expression = filter_expression & bool_filter("featured", True)
         items, _ = scan_items(get_config().table_services, filter_expression=filter_expression, limit=100)
         if category:
             items = [item for item in items if item.get("category") == category]

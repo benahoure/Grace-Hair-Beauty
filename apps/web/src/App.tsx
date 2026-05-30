@@ -49,9 +49,11 @@ export function App() {
         <Route path="*" element={<NotFound />} />
       </Route>
 
+      {/* ── Admin login — standalone, no sidebar ── */}
+      <Route path="admin" element={<AdminRoot />} />
+
       {/* ── Admin pages — no public Header, Footer, or StickyBar ── */}
       <Route element={<AdminLayout />}>
-        <Route path="admin" element={<AdminRoot />} />
         <Route
           path="admin/dashboard"
           element={

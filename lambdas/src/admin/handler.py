@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from typing import Any, Literal
 
 import boto3
@@ -11,19 +13,21 @@ from business_settings.handler import SETTINGS_KEY
 from business_settings.models import BusinessSettingsPatch
 from common.config import get_config
 from common.dynamo import (
+    append_list_item,
     bool_filter,
     delete_item,
     get_item,
     put_item,
     scan_items,
     update_item,
+    update_item_with_removes,
 )
 from common.errors import ForbiddenError, NotFoundError
 from common.http import method, parse_json_body, path, path_parameter, query_params, validation_errors
 from common.ids import new_id, ttl_days, utc_now
 from common.logger import logger, safe_extra
 from common.response import bad_request, created, forbidden, internal_error, not_found, ok, options
-from common.security import decrypt_pii, require_admin, validate_cdn_url
+from common.security import decrypt_pii, require_admin, validate_cdn_url, validate_cdn_url_any
 from portfolio.models import PortfolioPatch, PortfolioWrite
 from reviews.models import ReviewPatch, ReviewWrite
 from services.models import ServicePatch, ServiceWrite
@@ -48,6 +52,8 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
     try:
         request_path = path(event)
         request_method = method(event)
+        if request_path == "/admin/upload-url" and request_method == "POST":
+            return generate_upload_url(event, admin_user_id)
         if request_path == "/admin/appointments" and request_method == "GET":
             return get_appointments(event)
         if path_parameter(event, "appointmentId") and request_method == "PATCH":
@@ -159,7 +165,12 @@ def get_services(event: dict) -> dict:
         limit=min(int(params.get("limit", "50")), 100),
         cursor=params.get("cursor"),
     )
-    services = sorted(items, key=lambda value: value.get("displayOrder", value.get("name", "")))
+
+    def _sort_key(value: dict) -> tuple:
+        order = value.get("displayOrder")
+        return (order is None, int(order) if order is not None else 0, value.get("name", ""))
+
+    services = sorted(items, key=_sort_key)
     return ok({"services": services, "nextCursor": next_cursor})
 
 
@@ -239,6 +250,8 @@ def create_service(event: dict, admin_user_id: str) -> dict:
             "serviceId": service_id,
             "priceUnit": "cents",
             "activeKey": str(body.active).lower(),
+            "images": [],
+            "displayOrder": 999,
             "createdAt": now,
             "updatedAt": now,
         }
@@ -250,20 +263,32 @@ def create_service(event: dict, admin_user_id: str) -> dict:
 
 def patch_service(event: dict, admin_user_id: str) -> dict:
     body = ServicePatch.model_validate(parse_json_body(event))
-    updates = body.model_dump(exclude_none=True)
-    if not updates:
+    add_image = body.addImage
+    updates = body.model_dump(exclude_none=True, exclude={"addImage"})
+    if not updates and not add_image:
         return bad_request("No service fields provided.")
+    service_id = resource_id(event, "serviceId")
     if updates.get("imageUrl"):
         validate_cdn_url(updates["imageUrl"], "services")
+    if add_image:
+        validate_cdn_url(add_image, "services")
     if "active" in updates:
         updates["activeKey"] = str(updates["active"]).lower()
-    service_id = resource_id(event, "serviceId")
-    updates["updatedAt"] = utc_now()
     try:
-        updated = update_item(get_config().table_services, {"serviceId": service_id}, updates)
+        if updates:
+            updates["updatedAt"] = utc_now()
+            updated = update_item(get_config().table_services, {"serviceId": service_id}, updates)
+        else:
+            existing = get_item(get_config().table_services, {"serviceId": service_id})
+            if not existing:
+                return not_found("Service not found.")
+            updated = existing
+        if add_image:
+            updated = append_list_item(get_config().table_services, {"serviceId": service_id}, "images", add_image)
     except NotFoundError:
         return not_found("Service not found.")
-    audit(admin_user_id, "service.updated", "service", service_id, {"fields": sorted(updates)})
+    changed_fields = sorted(list(updates.keys()) + (["addImage"] if add_image else []))
+    audit(admin_user_id, "service.updated", "service", service_id, {"fields": changed_fields})
     return ok(updated)
 
 
@@ -279,8 +304,8 @@ def delete_service(event: dict, admin_user_id: str) -> dict:
 
 def create_portfolio(event: dict, admin_user_id: str) -> dict:
     body = PortfolioWrite.model_validate(parse_json_body(event))
-    validate_cdn_url(body.imageUrl, "portfolio")
-    validate_cdn_url(body.thumbnailUrl, "portfolio")
+    validate_cdn_url_any(body.imageUrl)
+    validate_cdn_url_any(body.thumbnailUrl)
     now = utc_now()
     style_id = new_id()
     item = body.model_dump()
@@ -303,9 +328,9 @@ def patch_portfolio(event: dict, admin_user_id: str) -> dict:
     if not updates:
         return bad_request("No portfolio fields provided.")
     if updates.get("imageUrl"):
-        validate_cdn_url(updates["imageUrl"], "portfolio")
+        validate_cdn_url_any(updates["imageUrl"])
     if updates.get("thumbnailUrl"):
-        validate_cdn_url(updates["thumbnailUrl"], "portfolio")
+        validate_cdn_url_any(updates["thumbnailUrl"])
     if "active" in updates:
         updates["activeKey"] = str(updates["active"]).lower()
     style_id = resource_id(event, "styleId")
@@ -450,6 +475,7 @@ def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
     except NotFoundError:
         return not_found("Contact message not found.")
 
+    assert item is not None
     client_email = decrypt_pii(item.get("email"))
     if not client_email:
         return bad_request("This message has no email address to reply to.")
@@ -496,16 +522,21 @@ def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
 
 def patch_business_settings(event: dict, admin_user_id: str) -> dict:
     body = BusinessSettingsPatch.model_validate(parse_json_body(event))
-    updates = body.model_dump(exclude_none=True)
-    if not updates:
+    all_fields = body.model_dump(exclude_unset=True)
+    if not all_fields:
         return bad_request("No business settings fields provided.")
-    updates["updatedAt"] = utc_now()
-    updates["updatedBy"] = admin_user_id
+    set_fields = {k: v for k, v in all_fields.items() if v is not None}
+    remove_fields = [k for k, v in all_fields.items() if v is None]
+    set_fields["updatedAt"] = utc_now()
+    set_fields["updatedBy"] = admin_user_id
     try:
-        updated = update_item(get_config().table_business_settings, SETTINGS_KEY, updates)
+        updated = update_item_with_removes(
+            get_config().table_business_settings, SETTINGS_KEY, set_fields, remove_fields
+        )
     except NotFoundError:
         return not_found("Business settings have not been configured.")
-    audit(admin_user_id, "settings.updated", "settings", "BUSINESS#SETTINGS", {"fields": sorted(updates)})
+    changed_fields = sorted(list(set_fields.keys()) + remove_fields)
+    audit(admin_user_id, "settings.updated", "settings", "BUSINESS#SETTINGS", {"fields": changed_fields})
     invalidate_business_settings_cache()
     logger.info("Business settings updated", extra=safe_extra({"adminId": admin_user_id}))
     return ok(updated)
@@ -525,3 +556,32 @@ def invalidate_business_settings_cache() -> None:
         )
     except Exception:
         logger.exception("CloudFront invalidation failed")
+
+
+_ALLOWED_FOLDERS = {"services", "portfolio"}
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+def generate_upload_url(event: dict, admin_user_id: str) -> dict:
+    body = parse_json_body(event)
+    folder = body.get("folder", "").strip().strip("/")
+    if folder not in _ALLOWED_FOLDERS:
+        return bad_request("folder must be 'services' or 'portfolio'")
+    filename = body.get("filename", "").strip()
+    if not filename:
+        return bad_request("filename is required")
+    content_type = body.get("contentType", "image/jpeg").strip()
+    if content_type not in _ALLOWED_CONTENT_TYPES:
+        return bad_request("contentType must be a supported image type (jpeg, png, webp, gif)")
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)[:100]
+    key = f"{folder}/{new_id()}/{safe_name}"
+    config = get_config()
+    s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    upload_url = s3_client.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": config.assets_bucket, "Key": key, "ContentType": content_type},
+        ExpiresIn=300,
+    )
+    public_url = f"{config.cdn_base_url}/{key}"
+    audit(admin_user_id, "asset.upload_url_generated", "asset", key, {"folder": folder})
+    return ok({"uploadUrl": upload_url, "key": key, "publicUrl": public_url})

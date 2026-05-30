@@ -121,6 +121,63 @@ def update_item(table_name: str, key: dict[str, Any], updates: dict[str, Any]) -
     return to_json_safe(response["Attributes"])
 
 
+def update_item_with_removes(
+    table_name: str,
+    key: dict[str, Any],
+    updates: dict[str, Any],
+    remove_fields: list[str],
+) -> dict[str, Any]:
+    """Run SET for non-null fields and REMOVE for explicitly-nulled fields in one call."""
+    expression_parts: list[str] = []
+    expression_names: dict[str, str] = {}
+    expression_values: dict[str, Any] = {}
+
+    if updates:
+        expression_names.update({f"#{name}": name for name in updates})
+        expression_values.update({f":{name}": value for name, value in updates.items()})
+        expression_parts.append("SET " + ", ".join(f"#{name} = :{name}" for name in updates))
+
+    if remove_fields:
+        expression_names.update({f"#{name}": name for name in remove_fields})
+        expression_parts.append("REMOVE " + ", ".join(f"#{name}" for name in remove_fields))
+
+    update_expression = " ".join(expression_parts)
+    try:
+        kwargs: dict[str, Any] = {
+            "Key": key,
+            "UpdateExpression": update_expression,
+            "ConditionExpression": Attr(list(key.keys())[0]).exists(),
+            "ReturnValues": "ALL_NEW",
+        }
+        if expression_names:
+            kwargs["ExpressionAttributeNames"] = expression_names
+        if expression_values:
+            kwargs["ExpressionAttributeValues"] = expression_values
+        response = _table(table_name).update_item(**kwargs)
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise NotFoundError("Resource not found.") from exc
+        raise
+    return to_json_safe(response["Attributes"])
+
+
+def append_list_item(table_name: str, key: dict[str, Any], attribute: str, value: Any) -> dict[str, Any]:
+    try:
+        response = _table(table_name).update_item(
+            Key=key,
+            UpdateExpression="SET #attr = list_append(if_not_exists(#attr, :empty), :new)",
+            ExpressionAttributeNames={"#attr": attribute},
+            ExpressionAttributeValues={":new": [value], ":empty": []},
+            ConditionExpression=Attr(list(key.keys())[0]).exists(),
+            ReturnValues="ALL_NEW",
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise NotFoundError("Resource not found.") from exc
+        raise
+    return to_json_safe(response["Attributes"])
+
+
 def active_filter():
     return Attr("active").eq(True) | Attr("active").eq("true")
 

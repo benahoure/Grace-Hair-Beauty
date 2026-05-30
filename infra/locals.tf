@@ -82,6 +82,7 @@ locals {
   ])
 
   admin_routes = toset([
+    "POST /admin/upload-url",
     "GET /admin/services",
     "POST /admin/services",
     "PATCH /admin/services/{serviceId}",

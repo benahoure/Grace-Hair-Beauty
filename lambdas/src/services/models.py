@@ -34,8 +34,9 @@ class ServicePatch(HtmlStrippingModelMixin, BaseModel):
     imageUrl: str | None = None
     featured: bool | None = None
     active: bool | None = None
+    addImage: str | None = None  # appends a URL to the images[] gallery list
 
-    @field_validator("imageUrl")
+    @field_validator("imageUrl", "addImage")
     @classmethod
     def validate_optional_image_url(cls, value: str | None) -> str | None:
         return https_url(value) if value else value

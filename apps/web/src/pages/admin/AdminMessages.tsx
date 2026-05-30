@@ -231,7 +231,7 @@ function MessageCard({
               disabled={isUpdating || !replyText.trim()}
               onClick={handleSendReply}
               className="rounded-lg px-4 py-2 text-xs font-semibold disabled:opacity-40"
-              style={{ background: '#2C1810', color: '#FAF6F0' }}
+              style={{ background: '#080610', color: '#FAF6F0' }}
             >
               {isUpdating ? 'Sending…' : 'Send Reply'}
             </button>
