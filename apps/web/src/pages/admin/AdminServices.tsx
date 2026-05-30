@@ -335,8 +335,9 @@ function ServiceDrawer({
     setError(null)
     setIsSubmitting(true)
     try {
-      const subcategoryValue = subcategory || undefined
-      const imagePositionValue = imagePosition || undefined
+      // Send null (not undefined) so the Lambda can REMOVE the field from DynamoDB when cleared
+      const subcategoryValue = subcategory || null
+      const imagePositionValue = imagePosition || null
       if (isEdit) {
         await api.updateService(service.serviceId, {
           name, category, subcategory: subcategoryValue, description, startingPrice, durationMinutes,
@@ -344,8 +345,8 @@ function ServiceDrawer({
         })
       } else {
         await api.createService({
-          name, category, subcategory: subcategoryValue, description, startingPrice, durationMinutes,
-          imageUrl, imagePosition: imagePositionValue, featured, active,
+          name, category, subcategory: subcategoryValue ?? undefined, description, startingPrice, durationMinutes,
+          imageUrl, imagePosition: imagePositionValue ?? undefined, featured, active,
         })
       }
       onSaved()

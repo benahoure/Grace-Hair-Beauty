@@ -264,20 +264,24 @@ def create_service(event: dict, admin_user_id: str) -> dict:
 def patch_service(event: dict, admin_user_id: str) -> dict:
     body = ServicePatch.model_validate(parse_json_body(event))
     add_image = body.addImage
-    updates = body.model_dump(exclude_none=True, exclude={"addImage"})
-    if not updates and not add_image:
+    all_fields = body.model_dump(exclude_unset=True, exclude={"addImage"})
+    set_fields = {k: v for k, v in all_fields.items() if v is not None}
+    remove_fields = [k for k, v in all_fields.items() if v is None]
+    if not set_fields and not remove_fields and not add_image:
         return bad_request("No service fields provided.")
     service_id = resource_id(event, "serviceId")
-    if updates.get("imageUrl"):
-        validate_cdn_url(updates["imageUrl"], "services")
+    if set_fields.get("imageUrl"):
+        validate_cdn_url(set_fields["imageUrl"], "services")
     if add_image:
         validate_cdn_url(add_image, "services")
-    if "active" in updates:
-        updates["activeKey"] = str(updates["active"]).lower()
+    if "active" in set_fields:
+        set_fields["activeKey"] = str(set_fields["active"]).lower()
     try:
-        if updates:
-            updates["updatedAt"] = utc_now()
-            updated = update_item(get_config().table_services, {"serviceId": service_id}, updates)
+        if set_fields or remove_fields:
+            set_fields["updatedAt"] = utc_now()
+            updated = update_item_with_removes(
+                get_config().table_services, {"serviceId": service_id}, set_fields, remove_fields
+            )
         else:
             existing = get_item(get_config().table_services, {"serviceId": service_id})
             if not existing:
@@ -287,7 +291,7 @@ def patch_service(event: dict, admin_user_id: str) -> dict:
             updated = append_list_item(get_config().table_services, {"serviceId": service_id}, "images", add_image)
     except NotFoundError:
         return not_found("Service not found.")
-    changed_fields = sorted(list(updates.keys()) + (["addImage"] if add_image else []))
+    changed_fields = sorted(list(all_fields.keys()) + (["addImage"] if add_image else []))
     audit(admin_user_id, "service.updated", "service", service_id, {"fields": changed_fields})
     return ok(updated)
 
