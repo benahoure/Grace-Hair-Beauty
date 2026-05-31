@@ -10,6 +10,6 @@ waf_common_override_count = false
 log_level                 = "WARNING"
 allowed_origin            = "https://gracehairsbeauty.com"
 ses_sender_email          = "no-reply@gracehairsbeauty.com"
-admin_alert_email         = "plbahoure2993@gmail.com"
+admin_alert_email         = "booking@gracehairsbeauty.com"
 cognito_callback_urls     = ["https://gracehairsbeauty.com/admin", "https://gracehairsbeauty.com/admin/callback"]
 cognito_logout_urls       = ["https://gracehairsbeauty.com/admin"]

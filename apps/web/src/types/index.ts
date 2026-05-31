@@ -22,7 +22,11 @@ export type ServiceSubcategory =
 
 export type PortfolioCategory =
   | 'knotless'
+  | 'boho'
   | 'box-braids'
+  | 'cornrows'
+  | 'fulani'
+  | 'crochet'
   | 'senegalese'
   | 'sew-in'
   | 'natural'

@@ -6,17 +6,22 @@ import { ImageUploader } from '../../components/admin/ImageUploader'
 import { PageMeta } from '../../components/seo/PageMeta'
 import { api } from '../../lib/api'
 import { shortDate } from '../../lib/format'
-import type { PortfolioCategory, PortfolioItem, SalonService, ServiceCategory } from '../../types'
+import type { PortfolioItem, SalonService, ServiceCategory } from '../../types'
 import { AdminPageShell } from './AdminDashboard'
 
-const PORTFOLIO_CATEGORIES: { value: PortfolioCategory; label: string }[] = [
+const PORTFOLIO_CATEGORIES: { value: string; label: string }[] = [
   { value: 'knotless', label: 'Knotless Braids' },
+  { value: 'boho', label: 'Boho Braids' },
   { value: 'box-braids', label: 'Box Braids' },
+  { value: 'cornrows', label: 'Cornrows' },
+  { value: 'fulani', label: 'Fulani Braids' },
+  { value: 'crochet', label: 'Crochet' },
   { value: 'senegalese', label: 'Senegalese Twists' },
   { value: 'sew-in', label: 'Sew-In' },
   { value: 'natural', label: 'Natural' },
   { value: 'kids', label: 'Kids' },
   { value: 'men', label: "Men's" },
+  { value: '__custom__', label: 'Custom (type below)…' },
 ]
 
 const SERVICE_CATEGORIES: { value: ServiceCategory; label: string }[] = [
@@ -227,7 +232,8 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
   const [imageUrl, setImageUrl] = useState('')
   const [title, setTitle] = useState('')
   const [destination, setDestination] = useState<Destination>('portfolio')
-  const [portfolioCategory, setPortfolioCategory] = useState<PortfolioCategory>('knotless')
+  const [portfolioCategory, setPortfolioCategory] = useState('knotless')
+  const [customPortfolioCategory, setCustomPortfolioCategory] = useState('')
   const [featured, setFeatured] = useState(false)
 
   // Reset uploaded URL when destination changes — avoids CDN folder mismatch
@@ -266,6 +272,11 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
     e.preventDefault()
     if (!imageUrl) { setError('Please upload a photo first.'); return }
     if (!title.trim()) { setError('Please enter a title for this photo.'); return }
+    const resolvedCategory = (
+      portfolioCategory === '__custom__' ? customPortfolioCategory.trim() : portfolioCategory
+    ) as import('../../types').PortfolioCategory
+    if (!resolvedCategory) { setError('Please enter a custom category name.'); return }
+
     setError(null)
     setIsSubmitting(true)
 
@@ -273,7 +284,7 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
       if (destination === 'portfolio') {
         await api.createPortfolioItem({
           title: title.trim(),
-          category: portfolioCategory,
+          category: resolvedCategory,
           imageUrl,
           thumbnailUrl: imageUrl,
           featured,
@@ -284,7 +295,7 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
         await api.updateService(selectedServiceId, { addImage: imageUrl } as Parameters<typeof api.updateService>[1])
         await api.createPortfolioItem({
           title: title.trim(),
-          category: portfolioCategory,
+          category: resolvedCategory,
           imageUrl,
           thumbnailUrl: imageUrl,
           featured,
@@ -308,7 +319,7 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
         })
         await api.createPortfolioItem({
           title: title.trim(),
-          category: portfolioCategory,
+          category: resolvedCategory,
           imageUrl,
           thumbnailUrl: imageUrl,
           featured: false,
@@ -363,6 +374,7 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
               Photo <span className="text-error">*</span>
             </label>
             <ImageUploader
+              key={destination}
               folder={destination === 'portfolio' ? 'portfolio' : 'services'}
               onUploaded={setImageUrl}
               label="Upload photo"
@@ -423,13 +435,22 @@ function AddPhotoDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
             </label>
             <select
               value={portfolioCategory}
-              onChange={(e) => setPortfolioCategory(e.target.value as PortfolioCategory)}
+              onChange={(e) => setPortfolioCategory(e.target.value)}
               className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
             >
               {PORTFOLIO_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
+            {portfolioCategory === '__custom__' && (
+              <input
+                type="text"
+                value={customPortfolioCategory}
+                onChange={(e) => setCustomPortfolioCategory(e.target.value)}
+                placeholder="e.g. Ivorian Braids"
+                className="mt-2 w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+              />
+            )}
           </div>
 
           {/* Add to existing service: service picker */}

@@ -169,45 +169,69 @@ export function AdminSettings() {
           </section>
 
           {/* Hours */}
-          <section className="rounded-xl border border-cream-border bg-paper p-6 shadow-soft">
-            <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-cocoa/60">Hours</h2>
-            <div className="grid gap-3">
+          <section className="rounded-xl border border-cream-border bg-paper p-5 shadow-soft">
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-cocoa/60">Hours</h2>
+            <div className="divide-y divide-cream-border/60">
               {DAYS.map((day) => {
                 const h = form.hours[day]
                 return (
-                  <div key={day} className="flex flex-wrap items-center gap-3">
-                    <span className="w-24 shrink-0 text-xs font-semibold capitalize text-espresso">{day}</span>
-                    <label className="flex items-center gap-1.5 text-xs text-mocha">
-                      <input
-                        type="checkbox"
-                        checked={h.closed}
-                        onChange={(e) =>
-                          set('hours', { ...form.hours, [day]: { ...h, closed: e.target.checked } })
-                        }
-                        className="accent-cocoa"
-                      />
-                      Closed
+                  <div key={day} className="flex items-center gap-2 py-2.5">
+                    {/* Day abbreviation */}
+                    <span className="w-8 shrink-0 text-[0.7rem] font-bold uppercase text-espresso">
+                      {day.slice(0, 3)}
+                    </span>
+
+                    {/* Closed pill toggle */}
+                    <label
+                      className="flex shrink-0 cursor-pointer items-center gap-1.5 select-none"
+                      title={h.closed ? 'Mark as open' : 'Mark as closed'}
+                    >
+                      <div
+                        className="relative h-4 w-7 rounded-full transition-colors"
+                        style={{ background: h.closed ? '#2C1810' : 'rgba(0,0,0,0.12)' }}
+                      >
+                        <span
+                          className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform"
+                          style={{ transform: h.closed ? 'translateX(14px)' : 'translateX(2px)' }}
+                        />
+                        <input
+                          type="checkbox"
+                          checked={h.closed}
+                          onChange={(e) =>
+                            set('hours', { ...form.hours, [day]: { ...h, closed: e.target.checked } })
+                          }
+                          className="sr-only"
+                        />
+                      </div>
+                      <span className="text-[0.65rem] font-semibold uppercase tracking-wide"
+                        style={{ color: h.closed ? '#2C1810' : 'rgba(107,66,38,0.4)' }}>
+                        {h.closed ? 'Off' : 'On'}
+                      </span>
                     </label>
-                    {!h.closed && (
-                      <>
+
+                    {/* Time range */}
+                    {h.closed ? (
+                      <span className="flex-1 text-[0.65rem] italic text-mocha/30">Closed all day</span>
+                    ) : (
+                      <div className="flex flex-1 items-center gap-1.5">
                         <input
                           type="time"
                           value={h.open}
                           onChange={(e) =>
                             set('hours', { ...form.hours, [day]: { ...h, open: e.target.value } })
                           }
-                          className="rounded-lg border border-cream-border bg-cream px-2 py-1.5 text-xs text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                          className="flex-1 min-w-0 rounded-lg border border-cream-border bg-cream px-1.5 py-1 text-xs text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
                         />
-                        <span className="text-xs text-mocha/50">–</span>
+                        <span className="shrink-0 text-[0.65rem] text-mocha/35">–</span>
                         <input
                           type="time"
                           value={h.close}
                           onChange={(e) =>
                             set('hours', { ...form.hours, [day]: { ...h, close: e.target.value } })
                           }
-                          className="rounded-lg border border-cream-border bg-cream px-2 py-1.5 text-xs text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                          className="flex-1 min-w-0 rounded-lg border border-cream-border bg-cream px-1.5 py-1 text-xs text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
                         />
-                      </>
+                      </div>
                     )}
                   </div>
                 )

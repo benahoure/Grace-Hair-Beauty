@@ -250,7 +250,7 @@ def create_service(event: dict, admin_user_id: str) -> dict:
             "serviceId": service_id,
             "priceUnit": "cents",
             "activeKey": str(body.active).lower(),
-            "images": [],
+            "images": [body.imageUrl],
             "displayOrder": 999,
             "createdAt": now,
             "updatedAt": now,
@@ -479,7 +479,9 @@ def patch_contact_message(event: dict, admin_user_id: str) -> dict:
 
 
 def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
+    from common.email_layout import email_layout
     from common.ses_client import send_email
+    from html import escape
 
     message_id = resource_id(event, "messageId")
     body = parse_json_body(event)
@@ -508,13 +510,25 @@ def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
         f"---\n"
         f"Your original message:\n\"{original_message}\""
     )
-    html_body = (
-        f"<p>Hi {client_name},</p>"
-        f"<p style='white-space:pre-wrap'>{reply_text}</p>"
-        f"<p><strong>Grace Hair Beauty</strong></p>"
-        f"<hr style='border:none;border-top:1px solid #ddd;margin:20px 0'/>"
-        f"<p style='color:#888;font-size:13px'>Your original message:<br/>"
-        f"<em>&ldquo;{original_message}&rdquo;</em></p>"
+    reply_block = f"""
+      <tr>
+        <td style="padding: 14px 32px 30px 32px;">
+          <p style="margin: 0 0 18px 0; color: #2C1810; font: 400 15px/1.7 Arial, sans-serif; white-space: pre-wrap;">{escape(reply_text)}</p>
+          <hr style="border: none; border-top: 1px solid #E4D9CE; margin: 20px 0;" />
+          <p style="margin: 0; color: #A07850; font: 400 13px/1.6 Arial, sans-serif;">
+            Your original message:<br/>
+            <em style="color: #6B4226;">&ldquo;{escape(original_message)}&rdquo;</em>
+          </p>
+        </td>
+      </tr>
+    """
+    html_body = email_layout(
+        preheader=f"Grace Hair Beauty replied to your inquiry.",
+        title="Reply from Grace Hair Beauty",
+        intro=f"Hi {client_name}, here is our reply to your recent inquiry.",
+        content=reply_block,
+        cta_label="Book an Appointment",
+        cta_url=f"{get_config().allowed_origin}/book",
     )
 
     try:

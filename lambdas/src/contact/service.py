@@ -2,10 +2,73 @@ from __future__ import annotations
 
 from common.config import get_config
 from common.dynamo import put_item
+from common.email_layout import details_table, email_layout
 from common.ids import new_id, ttl_days, utc_now
 from common.security import encrypt_pii
 from common.ses_client import best_effort_send_email, notify_admin
 from contact.models import ContactRequest
+
+
+def _customer_contact_html(name: str, services_text: str) -> str:
+    rows: list[tuple[str, str | None]] = [
+        ("Interested in", services_text if services_text != "none selected" else None),
+        ("Response time", "Within 1 business day"),
+    ]
+    content = details_table(rows)
+    return email_layout(
+        preheader="Grace Hair Beauty received your message — we'll respond within 1 business day.",
+        title="Message Received",
+        intro=(
+            f"Hi {name}, thank you for reaching out to Grace Hair Beauty! "
+            "Your message has been received. We'll review it and respond within 1 business day."
+        ),
+        content=content,
+        cta_label="View Our Services",
+        cta_url=f"{get_config().allowed_origin}/services",
+    )
+
+
+def _admin_contact_html(
+    name: str,
+    phone: str,
+    email: str | None,
+    message: str,
+    services_text: str,
+    inspiration: str | None,
+) -> str:
+    rows: list[tuple[str, str | None]] = [
+        ("From", name),
+        ("Phone", phone),
+        ("Email", email),
+        ("Interested in", services_text if services_text != "none selected" else None),
+        ("Inspiration photo", inspiration),
+        ("Message", message),
+    ]
+    content = details_table(rows)
+    return email_layout(
+        preheader=f"New contact message from {name}.",
+        title="New Contact Message",
+        intro="A new message was submitted through the Grace Hair Beauty contact form.",
+        content=content,
+        cta_label="Open Admin Dashboard",
+        cta_url=f"{get_config().allowed_origin}/admin/contacts",
+    )
+
+
+def _admin_contact_text(name: str, phone: str, email: str | None, message: str, services_text: str) -> str:
+    lines = [
+        f"New contact message from {name}.",
+        "",
+        f"Phone: {phone}",
+    ]
+    if email:
+        lines.append(f"Email: {email}")
+    lines += [
+        f"Services of interest: {services_text}",
+        "",
+        f"Message: {message}",
+    ]
+    return "\n".join(lines)
 
 
 def create_contact_message(request: ContactRequest) -> dict:
@@ -33,11 +96,31 @@ def create_contact_message(request: ContactRequest) -> dict:
         best_effort_send_email(
             to_address=str(request.email),
             subject="Grace Hair Beauty received your message",
-            text_body="Thanks for reaching out to Grace Hair Beauty. We will respond within 1 business day.",
+            text_body=(
+                f"Hi {request.name},\n\n"
+                "Thank you for reaching out to Grace Hair Beauty! "
+                "Your message has been received and we'll respond within 1 business day.\n\n"
+                "Grace Hair Beauty"
+            ),
+            html_body=_customer_contact_html(request.name, services_text),
         )
     notify_admin(
-        "New Grace Hair Beauty contact message",
-        f"New message from {request.name}. Services of interest: {services_text}.",
+        f"New contact message from {request.name}",
+        _admin_contact_text(
+            request.name,
+            request.phone,
+            str(request.email) if request.email else None,
+            request.message,
+            services_text,
+        ),
+        html_body=_admin_contact_html(
+            request.name,
+            request.phone,
+            str(request.email) if request.email else None,
+            request.message,
+            services_text,
+            request.inspirationPhotoName,
+        ),
     )
     return {
         "messageId": message_id,

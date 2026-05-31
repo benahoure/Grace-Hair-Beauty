@@ -11,6 +11,6 @@ log_level                  = "DEBUG"
 allowed_origin             = "https://dev.gracehairsbeauty.com"
 additional_allowed_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 ses_sender_email           = "no-reply@gracehairsbeauty.com"
-admin_alert_email          = "plbahoure2993@gmail.com"
+admin_alert_email          = "booking@gracehairsbeauty.com"
 cognito_callback_urls      = ["https://dev.gracehairsbeauty.com/admin", "https://dev.gracehairsbeauty.com/admin/callback"]
 cognito_logout_urls        = ["https://dev.gracehairsbeauty.com/admin"]

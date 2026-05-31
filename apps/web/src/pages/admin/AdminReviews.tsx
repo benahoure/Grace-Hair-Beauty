@@ -27,6 +27,7 @@ function StarRating({ rating }: { rating: number }) {
 
 export function AdminReviews() {
   const [filter, setFilter] = useState<ReviewFilter>('pending')
+  const [mutatingId, setMutatingId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const { data, isPending, isError } = useQuery({
@@ -37,12 +38,44 @@ export function AdminReviews() {
   const updateMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: { approved?: boolean; featured?: boolean } }) =>
       api.updateReview(id, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-reviews'] }),
+    onMutate: async ({ id, body }) => {
+      setMutatingId(id)
+      await queryClient.cancelQueries({ queryKey: ['admin-reviews'] })
+      const prev = queryClient.getQueryData<{ reviews: AdminReview[] }>(['admin-reviews'])
+      queryClient.setQueryData<{ reviews: AdminReview[] }>(['admin-reviews'], (old) => {
+        if (!old) return old
+        return { ...old, reviews: old.reviews.map((r) => (r.reviewId === id ? { ...r, ...body } : r)) }
+      })
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['admin-reviews'], ctx.prev)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reviews'] })
+      setMutatingId(null)
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteReview(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-reviews'] }),
+    onMutate: async (id) => {
+      setMutatingId(id)
+      await queryClient.cancelQueries({ queryKey: ['admin-reviews'] })
+      const prev = queryClient.getQueryData<{ reviews: AdminReview[] }>(['admin-reviews'])
+      queryClient.setQueryData<{ reviews: AdminReview[] }>(['admin-reviews'], (old) => {
+        if (!old) return old
+        return { ...old, reviews: old.reviews.filter((r) => r.reviewId !== id) }
+      })
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['admin-reviews'], ctx.prev)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reviews'] })
+      setMutatingId(null)
+    },
   })
 
   const allReviews = data?.reviews ?? []
@@ -51,8 +84,6 @@ export function AdminReviews() {
     if (filter === 'approved') return r.approved
     return true
   })
-
-  const isMutating = updateMutation.isPending || deleteMutation.isPending
 
   return (
     <>
@@ -111,7 +142,7 @@ export function AdminReviews() {
                   deleteMutation.mutate(review.reviewId)
                 }
               }}
-              isUpdating={isMutating}
+              isMutating={mutatingId === review.reviewId}
             />
           ))}
         </div>
@@ -126,14 +157,14 @@ function ReviewCard({
   onRevoke,
   onToggleFeatured,
   onDelete,
-  isUpdating,
+  isMutating,
 }: {
   review: AdminReview
   onApprove: () => void
   onRevoke: () => void
   onToggleFeatured: () => void
   onDelete: () => void
-  isUpdating: boolean
+  isMutating: boolean
 }) {
   return (
     <div className="rounded-xl border border-cream-border bg-paper p-5 shadow-soft">
@@ -170,41 +201,41 @@ function ReviewCard({
           {!review.approved ? (
             <button
               type="button"
-              disabled={isUpdating}
+              disabled={isMutating}
               onClick={onApprove}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity disabled:opacity-40"
               style={{ background: 'rgba(34,197,94,0.12)', color: '#166534' }}
             >
-              Approve
+              {isMutating ? '…' : 'Approve'}
             </button>
           ) : (
             <button
               type="button"
-              disabled={isUpdating}
+              disabled={isMutating}
               onClick={onRevoke}
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity disabled:opacity-40"
               style={{ background: 'rgba(251,191,36,0.12)', color: '#92400e' }}
             >
-              Revoke
+              {isMutating ? '…' : 'Revoke'}
             </button>
           )}
           <button
             type="button"
-            disabled={isUpdating}
+            disabled={isMutating}
             onClick={onToggleFeatured}
-            className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity disabled:opacity-40"
             style={{ background: 'rgba(59,130,246,0.12)', color: '#1e40af' }}
           >
-            {review.featured ? 'Unfeature' : 'Feature'}
+            {isMutating ? '…' : review.featured ? 'Unfeature' : 'Feature'}
           </button>
           <button
             type="button"
-            disabled={isUpdating}
+            disabled={isMutating}
             onClick={onDelete}
-            className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity disabled:opacity-40"
             style={{ background: 'rgba(239,68,68,0.12)', color: '#991b1b' }}
           >
-            Delete
+            {isMutating ? '…' : 'Delete'}
           </button>
         </div>
       </div>

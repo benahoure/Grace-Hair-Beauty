@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 
 import { ImageUploader } from '../../components/admin/ImageUploader'
 import { PageMeta } from '../../components/seo/PageMeta'
-import { api } from '../../lib/api'
+import { api, ApiRequestError } from '../../lib/api'
 import { formatDuration, formatPrice } from '../../lib/format'
 import { SERVICE_CATEGORIES, getCategoryLabel } from '../../lib/serviceCategories'
-import type { SalonService, ServiceCategory, ServiceSubcategory } from '../../types'
+import type { SalonService, ServiceCategory } from '../../types'
 import { AdminPageShell } from './AdminDashboard'
 
 export function AdminServices() {
@@ -307,11 +307,23 @@ function ServiceDrawer({
   const [changingPhoto, setChangingPhoto] = useState(false)
   const [name, setName] = useState(service?.name ?? '')
   const [category, setCategory] = useState<ServiceCategory>(service?.category ?? 'african-braids')
-  const [subcategory, setSubcategory] = useState<ServiceSubcategory | ''>(service?.subcategory ?? '')
+  // Determine if the existing subcategory is a known one or a custom value
+  const knownSubs = SERVICE_CATEGORIES.find((c) => c.value === (service?.category ?? category))?.subcategories?.map((s) => s.value) ?? []
+  const initialSub = service?.subcategory ?? ''
+  const isCustomSub = !!(initialSub && !knownSubs.includes(initialSub))
+  const [subcategory, setSubcategory] = useState<string>(isCustomSub ? '__custom__' : initialSub)
+  // If the stored value is a slug (lowercase + hyphens only), convert to display form so the admin sees readable text
+  const [customSubcategory, setCustomSubcategory] = useState(() => {
+    if (!isCustomSub) return ''
+    return /^[a-z][a-z0-9-]*$/.test(initialSub)
+      ? initialSub.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+      : initialSub
+  })
   const [imagePosition, setImagePosition] = useState(service?.imagePosition ?? '')
   const [description, setDescription] = useState(service?.description ?? '')
   const [priceStr, setPriceStr] = useState(service ? String(service.startingPrice / 100) : '')
-  const [durationStr, setDurationStr] = useState(service ? String(service.durationMinutes) : '')
+  const [durationHours, setDurationHours] = useState(service ? String(Math.floor(service.durationMinutes / 60)) : '')
+  const [durationMins, setDurationMins] = useState(service ? String(service.durationMinutes % 60) : '')
   const [featured, setFeatured] = useState(service?.featured ?? false)
   const [active, setActive] = useState(service?.active ?? true)
   const [error, setError] = useState<string | null>(null)
@@ -329,14 +341,15 @@ function ServiceDrawer({
     e.preventDefault()
     if (!imageUrl) { setError('Please upload a service image.'); return }
     const startingPrice = Math.round(parseFloat(priceStr) * 100)
-    const durationMinutes = parseInt(durationStr, 10)
+    const durationMinutes = (parseInt(durationHours || '0', 10) * 60) + parseInt(durationMins || '0', 10)
     if (isNaN(startingPrice) || startingPrice <= 0) { setError('Enter a valid price.'); return }
-    if (isNaN(durationMinutes) || durationMinutes <= 0) { setError('Enter a valid duration.'); return }
+    if (isNaN(durationMinutes) || durationMinutes < 15) { setError('Duration must be at least 15 minutes.'); return }
+    if (description.trim().length < 10) { setError('Description must be at least 10 characters.'); return }
     setError(null)
     setIsSubmitting(true)
     try {
       // Send null (not undefined) so the Lambda can REMOVE the field from DynamoDB when cleared
-      const subcategoryValue = subcategory || null
+      const subcategoryValue = (subcategory === '__custom__' ? (customSubcategory.trim() || null) : (subcategory || null)) as import('../../types').ServiceSubcategory | null
       const imagePositionValue = imagePosition || null
       if (isEdit) {
         await api.updateService(service.serviceId, {
@@ -350,8 +363,22 @@ function ServiceDrawer({
         })
       }
       onSaved()
-    } catch {
-      setError(`Failed to ${isEdit ? 'update' : 'create'} service. Please try again.`)
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.fieldErrors) {
+        const fieldLabels: Record<string, string> = {
+          description: 'Description', name: 'Service name',
+          startingPrice: 'Price', durationMinutes: 'Duration', imageUrl: 'Photo',
+        }
+        const [field, msg] = Object.entries(err.fieldErrors)[0] ?? []
+        if (field && msg) {
+          const clean = msg.replace(/\s*\[type=\w+[^\]]*\]/, '').trim()
+          setError(`${fieldLabels[field] ?? field}: ${clean}`)
+        } else {
+          setError(err.message || 'Please review the highlighted fields.')
+        }
+      } else {
+        setError(`Failed to ${isEdit ? 'update' : 'create'} service. Please try again.`)
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -450,10 +477,9 @@ function ServiceDrawer({
             </select>
           </div>
 
-          {/* Subcategory — options driven by selected category */}
+          {/* Subcategory — options driven by selected category, with custom fallback */}
           {(() => {
             const subs = SERVICE_CATEGORIES.find((c) => c.value === category)?.subcategories ?? []
-            if (subs.length === 0) return null
             return (
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
@@ -461,14 +487,24 @@ function ServiceDrawer({
                 </label>
                 <select
                   value={subcategory}
-                  onChange={(e) => setSubcategory(e.target.value as ServiceSubcategory | '')}
+                  onChange={(e) => setSubcategory(e.target.value)}
                   className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
                 >
                   <option value="">— None —</option>
                   {subs.map((s) => (
                     <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
+                  <option value="__custom__">Custom (type below)…</option>
                 </select>
+                {subcategory === '__custom__' && (
+                  <input
+                    type="text"
+                    value={customSubcategory}
+                    onChange={(e) => setCustomSubcategory(e.target.value)}
+                    placeholder="e.g. Ivorian Braids"
+                    className="mt-2 w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                  />
+                )}
               </div>
             )
           })()}
@@ -499,13 +535,17 @@ function ServiceDrawer({
               Description <span className="text-error">*</span>
             </label>
             <textarea
-              required
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe this service for clients…"
               className="w-full resize-none rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
             />
+            <p className="mt-1 text-[0.65rem] text-mocha/40">
+              {description.length < 10
+                ? `${10 - description.length} more character${10 - description.length === 1 ? '' : 's'} needed`
+                : `${description.length} / 1000`}
+            </p>
           </div>
 
           {/* Price + Duration */}
@@ -527,18 +567,35 @@ function ServiceDrawer({
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mocha/60">
-                Duration (min) <span className="text-error">*</span>
+                Duration <span className="text-error">*</span>
               </label>
-              <input
-                required
-                type="number"
-                min="15"
-                max="720"
-                value={durationStr}
-                onChange={(e) => setDurationStr(e.target.value)}
-                placeholder="180"
-                className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
-              />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="12"
+                    value={durationHours}
+                    onChange={(e) => setDurationHours(e.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 pr-9 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-mocha/40">hr</span>
+                </div>
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    step="5"
+                    value={durationMins}
+                    onChange={(e) => setDurationMins(e.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-cream-border bg-white px-3.5 py-2.5 pr-12 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-mocha/40">min</span>
+                </div>
+              </div>
             </div>
           </div>
 

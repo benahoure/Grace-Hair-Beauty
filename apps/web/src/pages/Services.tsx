@@ -149,14 +149,15 @@ export function Services() {
         eyebrow="Our Services"
         title="Expert Styles,"
         italicTitle="Crafted with Care."
-        description="African braiding, protective styling, silk press, sew-ins, men’s styles, and gentle kids services with clear starting prices."
+        description="African braiding, protective styling, silk press, sew-ins, men's styles, and gentle kids services with clear starting prices."
         images={[
           { src: '/services/african-braids.webp', alt: 'African braids styled at Grace Hair Beauty', position: 'center 24%' },
           { src: '/services/knotless-braids-wavy-ends.webp', alt: 'Knotless braids with wavy ends styled at Grace Hair Beauty', position: 'center 18%' },
           { src: '/services/kids-cornrows-beads.webp', alt: 'Kids cornrows with beads styled at Grace Hair Beauty', position: 'center 20%' },
-          { src: '/services/men-hairstyles.webp', alt: 'Men’s protective hairstyle at Grace Hair Beauty', position: 'center 18%' },
+          { src: '/services/men-hairstyles.webp', alt: "Men's protective hairstyle at Grace Hair Beauty", position: 'center 18%' },
         ]}
         secondaryAction={{ label: 'View All Services', to: '#all-services', variant: 'gold' }}
+        scrollCueTo="#all-services"
       />
 
       <section className="pb-14 pt-10 md:pb-20 md:pt-14">
