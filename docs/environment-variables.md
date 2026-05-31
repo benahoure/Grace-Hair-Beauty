@@ -25,7 +25,7 @@ ALLOWED_ORIGIN=https://gracehairsbeauty.com
 ASSETS_BUCKET=gracehairsbeauty-prod-assets
 CDN_BASE_URL=https://cdn.gracehairsbeauty.com
 SES_SENDER_EMAIL=no-reply@gracehairsbeauty.com
-ADMIN_ALERT_EMAIL=ghbeauty24@gmail.com
+ADMIN_ALERT_EMAIL=plbahoure2993@gmail.com
 KMS_KEY_ID=arn:aws:kms:...
 BUSINESS_SETTINGS_DISTRIBUTION_ID=...
 ```

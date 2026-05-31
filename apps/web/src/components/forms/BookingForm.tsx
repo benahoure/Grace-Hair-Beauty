@@ -5,21 +5,15 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { z } from 'zod'
 
-import { api } from '../../lib/api'
-import { formatPrice } from '../../lib/format'
+import { ApiRequestError, api } from '../../lib/api'
+import { formatDuration, formatPrice } from '../../lib/format'
 import { mockPortfolio } from '../../lib/mockData'
-import { bookingSchema } from '../../lib/validators'
+import { bookingSchema, tomorrowInSalonTimeZone } from '../../lib/validators'
 import type { AppointmentRequest, ServiceCategory } from '../../types'
 
 type BookingErrors = Partial<Record<keyof AppointmentRequest, string>>
 
 const STEPS = ['Service', 'Your Info', 'Date & Time']
-
-function tomorrowDateString(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
-}
 
 interface BookingCategoryDef {
   id: string
@@ -32,31 +26,31 @@ interface BookingCategoryDef {
 const BOOKING_CATEGORIES: BookingCategoryDef[] = [
   {
     id: 'braids',
-    name: 'Braids',
-    tagline: 'Protective braided styles with clean parts and lasting hold.',
+    name: 'Braids & Protective Styles',
+    tagline: 'Knotless braids, box braids, boho, cornrows, twists, and more.',
     serviceCategories: ['african-braids'],
-    examples: ['Knotless Braids', 'Box Braids', 'Senegalese Twist', 'Fulani Braids'],
+    examples: ['Knotless Braids', 'Box Braids', 'Boho Knotless', 'Cornrows & Feed-In'],
   },
   {
     id: 'natural',
-    name: 'Natural Hair',
-    tagline: 'Silk press, natural styling, and healthy hair care.',
+    name: 'Natural Hair & Ponytails',
+    tagline: 'Natural styles, twists, and ponytail services.',
     serviceCategories: ['natural'],
-    examples: ['Natural Hairstyle', 'Silk Press & Styling', 'Protective Styling', 'Deep Hair Treatment'],
+    examples: ['Two-Strand Twists', 'Senegalese Twists', 'Passion Twists', 'Ponytail'],
   },
   {
     id: 'sew-in',
-    name: 'Sew-In & Extensions',
-    tagline: 'Polished sew-ins and extension styling for a flawless finish.',
+    name: 'Sew-In, Wigs & Crochet',
+    tagline: 'Wig cornrows and sew-in foundation styles.',
     serviceCategories: ['sew-in'],
-    examples: ['Sew-In'],
+    examples: ['Wig Cornrows'],
   },
   {
     id: 'other',
-    name: 'Other Hair Services',
-    tagline: 'Tailored styles for men, kids, and specialty requests.',
+    name: 'Men & Kids',
+    tagline: 'Tailored styles for men, kids, and toddlers.',
     serviceCategories: ['men', 'kids'],
-    examples: ['Men Hairstyles', 'Men Dreadlocks', 'Kids Hairstyles'],
+    examples: ['Men Cornrows', 'Men Loc Retwist', 'Youth Box Braids', 'Toddler Styles'],
   },
 ]
 
@@ -71,31 +65,31 @@ const referralOptions = [
 ]
 
 const PORTFOLIO_STYLE_SERVICE_MAP: Record<string, string> = {
-  'style-knotless-waist': 'svc-knotless-braids',
-  'style-boho-braids': 'svc-boho-waist',
-  'style-boho-golden': 'svc-boho-waist',
-  'style-boho-copper': 'svc-boho-waist',
-  'style-african-braids': 'svc-african-braids',
-  'style-fulani-braids': 'svc-fulani-braids',
-  'style-miracle-knot': 'svc-miracle-knot',
-  'style-crochet': 'svc-crochet-braids',
-  'style-jumbo-box-braids': 'svc-box-braids',
-  'style-box-braids': 'svc-box-braids',
-  'style-box-braids-styled': 'svc-box-braids-styled',
-  'style-senegalese-twist': 'svc-senegalese-twist',
+  'style-knotless-waist':          'svc-knotless-braids',
+  'style-boho-braids':             'svc-boho-waist',
+  'style-boho-golden':             'svc-boho-waist',
+  'style-boho-copper':             'svc-boho-waist',
+  'style-african-braids':          'svc-box-braids',
+  'style-fulani-braids':           'svc-knotless-braids',
+  'style-miracle-knot':            'svc-miracle-knot',
+  'style-crochet':                 'svc-kids-crochet-cornrows',
+  'style-jumbo-box-braids':        'svc-box-braids',
+  'style-box-braids':              'svc-box-braids',
+  'style-box-braids-styled':       'svc-box-braids-styled',
+  'style-senegalese-twist':        'svc-senegalese-twist',
   'style-senegalese-twist-colors': 'svc-senegalese-twist-colors',
-  'style-sew-in-layered': 'svc-sew-in',
-  'style-natural-hairstyle': 'svc-natural-hairstyle',
-  'style-cornrows-bun': 'svc-protective-styling',
-  'style-kids-beads': 'svc-kids-hairstyles',
-  'style-kids-twists-bow': 'svc-kids-hairstyles',
-  'style-kids-star-beads': 'svc-kids-hairstyles',
-  'style-kids-color-beads': 'svc-kids-hairstyles',
-  'style-kids-flower-beads': 'svc-kids-hairstyles',
-  'style-men-hairstyles': 'svc-men-hairstyles',
-  'style-men-hairstyle-2': 'svc-men-hairstyles',
-  'style-men-hairstyle-3': 'svc-men-hairstyles',
-  'style-men-dreadlocks': 'svc-men-dreadlocks',
+  'style-sew-in-layered':          'svc-wig-cornrows',
+  'style-natural-hairstyle':       'svc-natural-hairstyle',
+  'style-cornrows-bun':            'svc-feed-in-cornrows',
+  'style-kids-beads':              'svc-kids-hairstyles',
+  'style-kids-twists-bow':         'svc-kids-hairstyles',
+  'style-kids-star-beads':         'svc-kids-hairstyles',
+  'style-kids-color-beads':        'svc-kids-hairstyles',
+  'style-kids-flower-beads':       'svc-kids-hairstyles',
+  'style-men-hairstyles':          'svc-men-hairstyles',
+  'style-men-hairstyle-2':         'svc-men-hairstyles',
+  'style-men-hairstyle-3':         'svc-men-hairstyles',
+  'style-men-dreadlocks':          'svc-men-dreadlocks',
 }
 
 function serviceIdForPortfolioStyle(styleId: string): string {
@@ -171,7 +165,6 @@ export function BookingForm() {
     clientPhone: '',
     preferredDate: '',
     preferredTime: '',
-    alternateDate: '',
     notes: requestedStyleTitle
       ? `Portfolio inspiration: ${requestedStyleTitle}`
       : requestedStyle
@@ -265,7 +258,15 @@ export function BookingForm() {
     }, {})
   }, [servicesQuery.data])
 
-  const appointmentMutation = useMutation({ mutationFn: api.createAppointment })
+  const appointmentMutation = useMutation({
+    mutationFn: api.createAppointment,
+    onError: (error) => {
+      if (error instanceof ApiRequestError && error.fieldErrors) {
+        setErrors(error.fieldErrors as BookingErrors)
+        window.setTimeout(() => errorRef.current?.focus(), 0)
+      }
+    },
+  })
 
   // Scroll the confirmation screen into view the moment it appears
   useEffect(() => {
@@ -337,7 +338,7 @@ export function BookingForm() {
   }
 
   const handleFinalSubmit = () => {
-    if (step !== 3) return
+    if (step !== 3 || appointmentMutation.isPending) return
     const result = bookingSchema.safeParse(formData)
     if (!result.success) {
       setErrors(flattenErrors(result.error))
@@ -644,7 +645,7 @@ export function BookingForm() {
                             )}
                           </span>
                           <span className="mt-1 text-xs text-gold-dark">
-                            Starting at {formatPrice(svc.startingPrice)}&nbsp;&middot;&nbsp;{svc.durationMinutes}&nbsp;min
+                            Starting at {formatPrice(svc.startingPrice)}&nbsp;&middot;&nbsp;{formatDuration(svc.durationMinutes)}
                           </span>
                         </button>
                       )
@@ -660,7 +661,7 @@ export function BookingForm() {
                     <p className="mt-1 font-semibold text-cocoa">{selectedService.name}</p>
                     <p className="mt-0.5 text-sm text-espresso">
                       Starting at {formatPrice(selectedService.startingPrice)}
-                      &nbsp;&middot;&nbsp;{selectedService.durationMinutes} min
+                      &nbsp;&middot;&nbsp;{formatDuration(selectedService.durationMinutes)}
                     </p>
                   </div>
                 )}
@@ -753,10 +754,10 @@ export function BookingForm() {
                 id="preferredDate"
                 type="date"
                 value={formData.preferredDate}
-                min={tomorrowDateString()}
+                min={tomorrowInSalonTimeZone()}
                 onChange={(e) => update('preferredDate', e.target.value)}
                 onFocus={() => {
-                  if (!formData.preferredDate) update('preferredDate', tomorrowDateString())
+                  if (!formData.preferredDate) update('preferredDate', tomorrowInSalonTimeZone())
                 }}
                 aria-invalid={Boolean(errors.preferredDate)}
                 className="mt-2"

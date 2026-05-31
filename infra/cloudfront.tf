@@ -42,18 +42,15 @@ resource "aws_cloudfront_response_headers_policy" "frontend_security" {
       referrer_policy = "strict-origin-when-cross-origin"
       override        = true
     }
-  }
 
-  custom_headers_config {
-    items {
-      header = "Content-Security-Policy"
-      value = join("; ", [
+    content_security_policy {
+      content_security_policy = join("; ", [
         "default-src 'self'",
         "script-src 'self' 'unsafe-eval'",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data: https://cdn.${var.domain_name} https://maps.gstatic.com",
-        "connect-src 'self' https://api.${var.domain_name} https://cognito-idp.${var.aws_region}.amazonaws.com",
+        "img-src 'self' data: blob: https://cdn.${var.domain_name} https://maps.gstatic.com",
+        "connect-src 'self' https://api.${var.domain_name} https://cognito-idp.${var.aws_region}.amazonaws.com https://gracehairsbeauty-${var.env}-assets.s3.amazonaws.com",
         "frame-src https://www.google.com",
         "object-src 'none'",
         "base-uri 'self'",

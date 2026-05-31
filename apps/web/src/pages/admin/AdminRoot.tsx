@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 
 import { PageMeta } from '../../components/seo/PageMeta'
 import { adminIsAuthenticated, redirectToCognito, setAdminToken } from '../../lib/auth'
@@ -8,11 +8,18 @@ export function AdminRoot() {
   const navigate = useNavigate()
 
   useEffect(() => {
+    // Handle Cognito callback — token is in the URL hash
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
     const accessToken = params.get('access_token')
     if (accessToken) {
       setAdminToken(accessToken)
       navigate('/admin/dashboard', { replace: true })
+      return
+    }
+
+    // Not authenticated and no callback token → go straight to Cognito
+    if (!adminIsAuthenticated()) {
+      redirectToCognito()
     }
   }, [navigate])
 
@@ -20,31 +27,23 @@ export function AdminRoot() {
     return <Navigate to="/admin/dashboard" replace />
   }
 
+  // Brief loading state while redirecting to Cognito
   return (
     <>
       <PageMeta
-        title="Admin Login | Grace Hair Beauty"
-        description="Secure admin login for Grace Hair Beauty."
+        title="Admin | Grace Hair Beauty"
+        description="Admin access for Grace Hair Beauty."
         canonical="https://gracehairsbeauty.com/admin"
       />
-      <section className="section-pad">
-        <div className="container-page max-w-2xl">
-          <p className="eyebrow">Admin</p>
-          <h1 className="display-heading mt-3 text-6xl font-semibold">Salon Dashboard Login</h1>
-          <p className="mt-5 leading-8 text-espresso">
-            Admin access is protected by Cognito. Sign in with an approved admin account to manage bookings,
-            services, portfolio items, reviews, and business settings.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <button type="button" className="btn btn-primary" onClick={redirectToCognito}>
-              Sign In with Cognito
-            </button>
-            <Link className="btn btn-outline" to="/">
-              Back to Site
-            </Link>
-          </div>
+      <div
+        className="flex min-h-screen items-center justify-center"
+        style={{ background: 'linear-gradient(135deg, #040206 0%, #0A0810 40%, #100C14 100%)' }}
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-gold-light" />
+          <p className="text-sm" style={{ color: 'rgba(250,246,240,0.4)' }}>Redirecting to sign in…</p>
         </div>
-      </section>
+      </div>
     </>
   )
 }

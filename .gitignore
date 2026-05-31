@@ -35,6 +35,7 @@ venv/
 *.tfstate.*
 *.tfplan
 tfplan
+tfplan*.txt
 *.auto.tfvars
 *.auto.tfvars.json
 *.tfvars.local

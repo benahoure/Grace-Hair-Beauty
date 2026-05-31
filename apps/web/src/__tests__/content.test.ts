@@ -41,7 +41,7 @@ describe('production content guardrails', () => {
   it('keeps contact information centralized in mock/API settings only', () => {
     const componentSource = source.replace(fs.readFileSync(path.join(srcDir, 'lib/mockData.ts'), 'utf8'), '')
     expect(componentSource).not.toContain('+13178503001')
-    expect(componentSource).not.toContain('ghbeauty24@gmail.com')
+    expect(componentSource).not.toContain('plbahoure2993@gmail.com')
     expect(componentSource).not.toContain('955 Baden Manor Dr')
   })
 

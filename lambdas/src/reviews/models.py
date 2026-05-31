@@ -37,6 +37,7 @@ class ReviewPatch(HtmlStrippingModelMixin, BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5)
     body: str | None = Field(default=None, min_length=10, max_length=1000)
     approved: bool | None = None
+    featured: bool | None = None
 
     @field_validator("clientName")
     @classmethod

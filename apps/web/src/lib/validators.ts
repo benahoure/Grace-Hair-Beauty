@@ -1,21 +1,44 @@
 import { z } from 'zod'
 
+const SALON_TIME_ZONE = 'America/Indiana/Indianapolis'
+
+function addDaysToDateString(value: string, days: number): string {
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+  return date.toISOString().slice(0, 10)
+}
+
+export function dateStringInSalonTimeZone(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SALON_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+export function tomorrowInSalonTimeZone(date = new Date()): string {
+  return addDaysToDateString(dateStringInSalonTimeZone(date), 1)
+}
+
+function maxBookingDateInSalonTimeZone(date = new Date()): string {
+  return addDaysToDateString(dateStringInSalonTimeZone(date), 90)
+}
+
 const phoneSchema = z
   .string()
   .min(7, 'Enter a valid phone number.')
   .max(20, 'Phone number is too long.')
   .regex(/^[+()\-\s\d.]+$/, 'Enter a valid phone number.')
 
-const futureDate = z.string().refine((value) => {
-  const selected = new Date(`${value}T00:00:00`)
-  const tomorrow = new Date()
-  tomorrow.setHours(0, 0, 0, 0)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const max = new Date()
-  max.setHours(0, 0, 0, 0)
-  max.setDate(max.getDate() + 90)
-  return selected >= tomorrow && selected <= max
-}, 'Choose a date within the next 90 days, starting tomorrow.')
+const futureDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a preferred date.')
+  .refine((value) => {
+    return value >= tomorrowInSalonTimeZone() && value <= maxBookingDateInSalonTimeZone()
+  }, 'Choose a date within the next 90 days, starting tomorrow.')
 
 export const bookingSchema = z.object({
   serviceId: z.string().min(1, 'Choose a service.'),
@@ -25,7 +48,6 @@ export const bookingSchema = z.object({
   clientPhone: phoneSchema,
   preferredDate: futureDate,
   preferredTime: z.string().regex(/^\d{2}:\d{2}$/, 'Choose a preferred time.'),
-  alternateDate: z.string().optional().or(z.literal('')),
   notes: z.string().max(500, 'Please keep notes under 500 characters.').optional(),
   referralSource: z
     .enum(['instagram', 'tiktok', 'google', 'yelp', 'friend', 'other', ''])

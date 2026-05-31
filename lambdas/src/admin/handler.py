@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from typing import Any, Literal
 
 import boto3
@@ -11,19 +13,21 @@ from business_settings.handler import SETTINGS_KEY
 from business_settings.models import BusinessSettingsPatch
 from common.config import get_config
 from common.dynamo import (
+    append_list_item,
     bool_filter,
     delete_item,
     get_item,
     put_item,
     scan_items,
     update_item,
+    update_item_with_removes,
 )
 from common.errors import ForbiddenError, NotFoundError
 from common.http import method, parse_json_body, path, path_parameter, query_params, validation_errors
 from common.ids import new_id, ttl_days, utc_now
 from common.logger import logger, safe_extra
 from common.response import bad_request, created, forbidden, internal_error, not_found, ok, options
-from common.security import decrypt_pii, require_admin, validate_cdn_url
+from common.security import decrypt_pii, require_admin, validate_cdn_url, validate_cdn_url_any
 from portfolio.models import PortfolioPatch, PortfolioWrite
 from reviews.models import ReviewPatch, ReviewWrite
 from services.models import ServicePatch, ServiceWrite
@@ -48,6 +52,8 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
     try:
         request_path = path(event)
         request_method = method(event)
+        if request_path == "/admin/upload-url" and request_method == "POST":
+            return generate_upload_url(event, admin_user_id)
         if request_path == "/admin/appointments" and request_method == "GET":
             return get_appointments(event)
         if path_parameter(event, "appointmentId") and request_method == "PATCH":
@@ -78,6 +84,10 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             return delete_review(event, admin_user_id)
         if request_path == "/admin/contact-messages" and request_method == "GET":
             return get_contact_messages(event)
+        if path_parameter(event, "messageId") and request_method == "PATCH":
+            return patch_contact_message(event, admin_user_id)
+        if path_parameter(event, "messageId") and request_method == "POST" and request_path.endswith("/reply"):
+            return reply_to_contact_message(event, admin_user_id)
         if request_path == "/admin/business-settings" and request_method == "GET":
             return get_business_settings_admin(event)
         if request_path == "/admin/business-settings" and request_method == "PATCH":
@@ -155,7 +165,12 @@ def get_services(event: dict) -> dict:
         limit=min(int(params.get("limit", "50")), 100),
         cursor=params.get("cursor"),
     )
-    services = sorted(items, key=lambda value: value.get("displayOrder", value.get("name", "")))
+
+    def _sort_key(value: dict) -> tuple:
+        order = value.get("displayOrder")
+        return (order is None, int(order) if order is not None else 0, value.get("name", ""))
+
+    services = sorted(items, key=_sort_key)
     return ok({"services": services, "nextCursor": next_cursor})
 
 
@@ -173,9 +188,10 @@ def get_portfolio(event: dict) -> dict:
 
 def get_reviews_admin(event: dict) -> dict:
     params = query_params(event)
+    # Exclude aggregate/stats rows that share the table (e.g. reviewId = 'AGGREGATE#...')
     items, next_cursor = scan_items(
         get_config().table_reviews,
-        filter_expression=Attr("reviewId").exists(),
+        filter_expression=Attr("reviewId").exists() & Attr("clientName").exists(),
         limit=min(int(params.get("limit", "50")), 100),
         cursor=params.get("cursor"),
     )
@@ -234,6 +250,8 @@ def create_service(event: dict, admin_user_id: str) -> dict:
             "serviceId": service_id,
             "priceUnit": "cents",
             "activeKey": str(body.active).lower(),
+            "images": [body.imageUrl],
+            "displayOrder": 999,
             "createdAt": now,
             "updatedAt": now,
         }
@@ -245,37 +263,66 @@ def create_service(event: dict, admin_user_id: str) -> dict:
 
 def patch_service(event: dict, admin_user_id: str) -> dict:
     body = ServicePatch.model_validate(parse_json_body(event))
-    updates = body.model_dump(exclude_none=True)
-    if not updates:
+    add_image = body.addImage
+    all_fields = body.model_dump(exclude_unset=True, exclude={"addImage"})
+    set_fields = {k: v for k, v in all_fields.items() if v is not None}
+    remove_fields = [k for k, v in all_fields.items() if v is None]
+    if not set_fields and not remove_fields and not add_image:
         return bad_request("No service fields provided.")
-    if updates.get("imageUrl"):
-        validate_cdn_url(updates["imageUrl"], "services")
-    if "active" in updates:
-        updates["activeKey"] = str(updates["active"]).lower()
     service_id = resource_id(event, "serviceId")
-    updates["updatedAt"] = utc_now()
+    if set_fields.get("imageUrl"):
+        validate_cdn_url(set_fields["imageUrl"], "services")
+    if add_image:
+        validate_cdn_url(add_image, "services")
+    if "active" in set_fields:
+        set_fields["activeKey"] = str(set_fields["active"]).lower()
     try:
-        updated = update_item(get_config().table_services, {"serviceId": service_id}, updates)
+        if set_fields or remove_fields:
+            set_fields["updatedAt"] = utc_now()
+            updated = update_item_with_removes(
+                get_config().table_services, {"serviceId": service_id}, set_fields, remove_fields
+            )
+        else:
+            existing = get_item(get_config().table_services, {"serviceId": service_id})
+            if not existing:
+                return not_found("Service not found.")
+            updated = existing
+        if add_image:
+            updated = append_list_item(get_config().table_services, {"serviceId": service_id}, "images", add_image)
     except NotFoundError:
         return not_found("Service not found.")
-    audit(admin_user_id, "service.updated", "service", service_id, {"fields": sorted(updates)})
+    changed_fields = sorted(list(all_fields.keys()) + (["addImage"] if add_image else []))
+    audit(admin_user_id, "service.updated", "service", service_id, {"fields": changed_fields})
     return ok(updated)
 
 
 def delete_service(event: dict, admin_user_id: str) -> dict:
     service_id = resource_id(event, "serviceId")
+    existing = get_item(get_config().table_services, {"serviceId": service_id})
+    if not existing:
+        return not_found("Service not found.")
+    if not existing.get("active", True):
+        # already inactive — permanently remove
+        delete_item(get_config().table_services, {"serviceId": service_id})
+        audit(admin_user_id, "service.deleted_permanently", "service", service_id)
+        return ok({"message": "Service permanently deleted."})
+    # active — soft-delete (deactivate and remove from homepage)
     try:
-        update_item(get_config().table_services, {"serviceId": service_id}, {"active": False, "updatedAt": utc_now()})
+        update_item(
+            get_config().table_services,
+            {"serviceId": service_id},
+            {"active": False, "activeKey": "false", "featured": False, "updatedAt": utc_now()},
+        )
     except NotFoundError:
         return not_found("Service not found.")
-    audit(admin_user_id, "service.deleted", "service", service_id)
+    audit(admin_user_id, "service.deactivated", "service", service_id)
     return ok({"message": "Service deactivated."})
 
 
 def create_portfolio(event: dict, admin_user_id: str) -> dict:
     body = PortfolioWrite.model_validate(parse_json_body(event))
-    validate_cdn_url(body.imageUrl, "portfolio")
-    validate_cdn_url(body.thumbnailUrl, "portfolio")
+    validate_cdn_url_any(body.imageUrl)
+    validate_cdn_url_any(body.thumbnailUrl)
     now = utc_now()
     style_id = new_id()
     item = body.model_dump()
@@ -298,9 +345,9 @@ def patch_portfolio(event: dict, admin_user_id: str) -> dict:
     if not updates:
         return bad_request("No portfolio fields provided.")
     if updates.get("imageUrl"):
-        validate_cdn_url(updates["imageUrl"], "portfolio")
+        validate_cdn_url_any(updates["imageUrl"])
     if updates.get("thumbnailUrl"):
-        validate_cdn_url(updates["thumbnailUrl"], "portfolio")
+        validate_cdn_url_any(updates["thumbnailUrl"])
     if "active" in updates:
         updates["activeKey"] = str(updates["active"]).lower()
     style_id = resource_id(event, "styleId")
@@ -412,18 +459,115 @@ def get_contact_messages(event: dict) -> dict:
     return ok({"messages": messages, "nextCursor": next_cursor})
 
 
+def patch_contact_message(event: dict, admin_user_id: str) -> dict:
+    message_id = resource_id(event, "messageId")
+    body = parse_json_body(event)
+    updates: dict[str, Any] = {}
+    if "read" in body:
+        if not isinstance(body["read"], bool):
+            return bad_request("Field 'read' must be a boolean.")
+        updates["read"] = body["read"]
+    if not updates:
+        return bad_request("No updatable fields provided.")
+    updates["updatedAt"] = utc_now()
+    try:
+        updated = update_item(get_config().table_contact_messages, {"messageId": message_id}, updates)
+    except NotFoundError:
+        return not_found("Contact message not found.")
+    audit(admin_user_id, "contact_message.updated", "contact_message", message_id, {"fields": sorted(updates)})
+    return ok(updated)
+
+
+def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
+    from common.email_layout import email_layout
+    from common.ses_client import send_email
+    from html import escape
+
+    message_id = resource_id(event, "messageId")
+    body = parse_json_body(event)
+    reply_text = body.get("reply", "").strip()
+    if not reply_text:
+        return bad_request("Reply text is required.")
+
+    try:
+        item = get_item(get_config().table_contact_messages, {"messageId": message_id})
+    except NotFoundError:
+        return not_found("Contact message not found.")
+
+    assert item is not None
+    client_email = decrypt_pii(item.get("email"))
+    if not client_email:
+        return bad_request("This message has no email address to reply to.")
+
+    client_name = item.get("name", "there")
+    original_message = item.get("message", "")
+
+    subject = "Re: Your inquiry to Grace Hair Beauty"
+    text_body = (
+        f"Hi {client_name},\n\n"
+        f"{reply_text}\n\n"
+        f"Grace Hair Beauty\n\n"
+        f"---\n"
+        f"Your original message:\n\"{original_message}\""
+    )
+    reply_block = f"""
+      <tr>
+        <td style="padding: 14px 32px 30px 32px;">
+          <p style="margin: 0 0 18px 0; color: #2C1810; font: 400 15px/1.7 Arial, sans-serif; white-space: pre-wrap;">{escape(reply_text)}</p>
+          <hr style="border: none; border-top: 1px solid #E4D9CE; margin: 20px 0;" />
+          <p style="margin: 0; color: #A07850; font: 400 13px/1.6 Arial, sans-serif;">
+            Your original message:<br/>
+            <em style="color: #6B4226;">&ldquo;{escape(original_message)}&rdquo;</em>
+          </p>
+        </td>
+      </tr>
+    """
+    html_body = email_layout(
+        preheader=f"Grace Hair Beauty replied to your inquiry.",
+        title="Reply from Grace Hair Beauty",
+        intro=f"Hi {client_name}, here is our reply to your recent inquiry.",
+        content=reply_block,
+        cta_label="Book an Appointment",
+        cta_url=f"{get_config().allowed_origin}/book",
+    )
+
+    try:
+        send_email(to_address=client_email, subject=subject, text_body=text_body, html_body=html_body)
+    except Exception:
+        return ok({"sent": False, "error": "Email delivery failed. Please try again."})
+
+    updates = {
+        "read": True,
+        "replied": True,
+        "replyText": reply_text,
+        "repliedAt": utc_now(),
+        "repliedBy": admin_user_id,
+        "updatedAt": utc_now(),
+    }
+    updated = update_item(get_config().table_contact_messages, {"messageId": message_id}, updates)
+    updated["email"] = decrypt_pii(updated.get("email"))
+    updated["phone"] = decrypt_pii(updated.get("phone"))
+    audit(admin_user_id, "contact_message.replied", "contact_message", message_id, {})
+    return ok({**updated, "sent": True})
+
+
 def patch_business_settings(event: dict, admin_user_id: str) -> dict:
     body = BusinessSettingsPatch.model_validate(parse_json_body(event))
-    updates = body.model_dump(exclude_none=True)
-    if not updates:
+    all_fields = body.model_dump(exclude_unset=True)
+    if not all_fields:
         return bad_request("No business settings fields provided.")
-    updates["updatedAt"] = utc_now()
-    updates["updatedBy"] = admin_user_id
+    set_fields = {k: v for k, v in all_fields.items() if v is not None}
+    remove_fields = [k for k, v in all_fields.items() if v is None]
+    set_fields["updatedAt"] = utc_now()
+    set_fields["updatedBy"] = admin_user_id
     try:
-        updated = update_item(get_config().table_business_settings, SETTINGS_KEY, updates)
+        updated = update_item_with_removes(
+            get_config().table_business_settings, SETTINGS_KEY, set_fields, remove_fields
+        )
     except NotFoundError:
         return not_found("Business settings have not been configured.")
-    audit(admin_user_id, "settings.updated", "settings", "BUSINESS#SETTINGS", {"fields": sorted(updates)})
+    changed_fields = sorted(list(set_fields.keys()) + remove_fields)
+    audit(admin_user_id, "settings.updated", "settings", "BUSINESS#SETTINGS", {"fields": changed_fields})
     invalidate_business_settings_cache()
     logger.info("Business settings updated", extra=safe_extra({"adminId": admin_user_id}))
     return ok(updated)
@@ -443,3 +587,32 @@ def invalidate_business_settings_cache() -> None:
         )
     except Exception:
         logger.exception("CloudFront invalidation failed")
+
+
+_ALLOWED_FOLDERS = {"services", "portfolio"}
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+def generate_upload_url(event: dict, admin_user_id: str) -> dict:
+    body = parse_json_body(event)
+    folder = body.get("folder", "").strip().strip("/")
+    if folder not in _ALLOWED_FOLDERS:
+        return bad_request("folder must be 'services' or 'portfolio'")
+    filename = body.get("filename", "").strip()
+    if not filename:
+        return bad_request("filename is required")
+    content_type = body.get("contentType", "image/jpeg").strip()
+    if content_type not in _ALLOWED_CONTENT_TYPES:
+        return bad_request("contentType must be a supported image type (jpeg, png, webp, gif)")
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)[:100]
+    key = f"{folder}/{new_id()}/{safe_name}"
+    config = get_config()
+    s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    upload_url = s3_client.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": config.assets_bucket, "Key": key, "ContentType": content_type},
+        ExpiresIn=300,
+    )
+    public_url = f"{config.cdn_base_url}/{key}"
+    audit(admin_user_id, "asset.upload_url_generated", "asset", key, {"folder": folder})
+    return ok({"uploadUrl": upload_url, "key": key, "publicUrl": public_url})

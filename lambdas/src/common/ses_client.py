@@ -8,15 +8,18 @@ from common.logger import logger, safe_extra
 _ses = boto3.client("ses")
 
 
-def send_email(*, to_address: str, subject: str, text_body: str) -> None:
+def send_email(*, to_address: str, subject: str, text_body: str, html_body: str | None = None) -> None:
     config = get_config()
+    body = {"Text": {"Data": text_body, "Charset": "UTF-8"}}
+    if html_body:
+        body["Html"] = {"Data": html_body, "Charset": "UTF-8"}
     try:
         _ses.send_email(
             Source=config.ses_sender_email,
             Destination={"ToAddresses": [to_address]},
             Message={
                 "Subject": {"Data": subject, "Charset": "UTF-8"},
-                "Body": {"Text": {"Data": text_body, "Charset": "UTF-8"}},
+                "Body": body,
             },
         )
     except Exception:
@@ -24,17 +27,20 @@ def send_email(*, to_address: str, subject: str, text_body: str) -> None:
         raise
 
 
-def best_effort_send_email(*, to_address: str, subject: str, text_body: str) -> bool:
+def best_effort_send_email(
+    *, to_address: str, subject: str, text_body: str, html_body: str | None = None
+) -> bool:
     try:
-        send_email(to_address=to_address, subject=subject, text_body=text_body)
+        send_email(to_address=to_address, subject=subject, text_body=text_body, html_body=html_body)
     except Exception:
         return False
     return True
 
 
-def notify_admin(subject: str, text_body: str) -> bool:
+def notify_admin(subject: str, text_body: str, html_body: str | None = None) -> bool:
     return best_effort_send_email(
         to_address=get_config().admin_alert_email,
         subject=subject,
         text_body=text_body,
+        html_body=html_body,
     )

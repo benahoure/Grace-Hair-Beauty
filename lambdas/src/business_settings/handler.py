@@ -18,7 +18,7 @@ DEFAULT_HOURS = {
 DEFAULT_SETTINGS = {
     "businessName": "Grace Hair Beauty",
     "phone": "+13178503001",
-    "email": "ghbeauty24@gmail.com",
+    "email": "plbahoure2993@gmail.com",
     "address": {
         "street": "955 Baden Manor Dr",
         "city": "Indianapolis",
@@ -57,6 +57,8 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             "googleReviewUrl": settings.get("googleReviewUrl", ""),
             "announcementBanner": settings.get("announcementBanner"),
             "bookingNotice": settings.get("bookingNotice", "We confirm all appointments within 24 hours."),
+            "founderImageUrl": settings.get("founderImageUrl"),
+            "contactImageUrl": settings.get("contactImageUrl"),
         }
         return ok(public_fields, cache_control="public, max-age=300")
     except Exception:

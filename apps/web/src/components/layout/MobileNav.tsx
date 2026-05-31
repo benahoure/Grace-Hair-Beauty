@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { MessageCircle, Phone, X } from 'lucide-react'
-import { useCallback, useEffect, useRef } from 'react'
+import { ChevronDown, MessageCircle, Phone, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -113,10 +113,16 @@ const LOGO_FOCUS_CSS = `
 
 // ── Component ─────────────────────────────────────────────────────────────
 
+interface MobileNavLink {
+  to: string
+  label: string
+  sub?: Array<{ to: string; label: string }>
+}
+
 interface MobileNavProps {
   open: boolean
   onClose: () => void
-  links: Array<{ to: string; label: string }>
+  links: Array<MobileNavLink>
   settings: BusinessSettings
   triggerRef?: React.RefObject<HTMLButtonElement>
 }
@@ -126,11 +132,13 @@ export function MobileNav({ open, onClose, links, settings, triggerRef }: Mobile
   const reduced   = useReducedMotion()
   const panelRef  = useRef<HTMLDivElement>(null)
   const closeRef  = useRef<HTMLButtonElement>(null)
+  const [expandedLink, setExpandedLink] = useState<string | null>(null)
 
   // Body scroll lock + StickyBookingBar signal
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('graceMobileMenuChange', { detail: { open } }))
     document.body.style.overflow = open ? 'hidden' : ''
+    if (!open) setExpandedLink(null)
     return () => { document.body.style.overflow = '' }
   }, [open])
 
@@ -342,49 +350,134 @@ export function MobileNav({ open, onClose, links, settings, triggerRef }: Mobile
               <nav aria-label="Mobile navigation">
                 {links.map((link) => {
                   const isActive = location.pathname === link.to
+                  const isExpanded = expandedLink === link.to
+                  const hasSub = !!link.sub?.length
+
                   return (
-                    <motion.div
-                      key={link.to}
-                      variants={linkVariants}
-                      whileTap={reduced ? {} : { x: 4, transition: { duration: 0.1 } }}
-                    >
-                      <Link
-                        to={link.to}
-                        onClick={() => handleNav(link.to)}
-                        aria-current={isActive ? 'page' : undefined}
-                        className="ghb-menu-link"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          color: isActive ? GOLD_SOLID : `${CREAM}0.88)`,
-                          fontSize: '1.475rem',
-                          fontWeight: isActive ? 600 : 300,
-                          letterSpacing: isActive ? '-0.01em' : '0.005em',
-                          borderBottom: `1px solid ${CREAM}0.055)`,
-                          paddingBlock: 14,
-                          textDecoration: 'none',
-                          WebkitTapHighlightColor: 'transparent',
-                          transition: 'color 0.15s',
-                        }}
-                      >
-                        {/* Gold left-bar for active page */}
-                        <span
-                          aria-hidden="true"
+                    <motion.div key={link.to} variants={linkVariants}>
+
+                      {/* Main row: link text + optional expand toggle */}
+                      <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${CREAM}0.055)` }}>
+                        <Link
+                          to={link.to}
+                          onClick={() => handleNav(link.to)}
+                          aria-current={isActive ? 'page' : undefined}
+                          className="ghb-menu-link"
                           style={{
-                            display: 'block',
-                            width: 2.5,
-                            minWidth: 2.5,
-                            height: isActive ? 22 : 0,
-                            borderRadius: 2,
-                            background: `linear-gradient(180deg, ${GOLD_SOLID} 0%, rgba(184,134,11,0.45) 100%)`,
-                            flexShrink: 0,
-                            transition: reduced ? 'none' : 'height 0.22s ease',
-                            overflow: 'hidden',
+                            flex: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            color: isActive ? GOLD_SOLID : `${CREAM}0.88)`,
+                            fontSize: '1.475rem',
+                            fontWeight: isActive ? 600 : 300,
+                            letterSpacing: isActive ? '-0.01em' : '0.005em',
+                            paddingBlock: 14,
+                            textDecoration: 'none',
+                            WebkitTapHighlightColor: 'transparent',
+                            transition: 'color 0.15s',
                           }}
-                        />
-                        {link.label}
-                      </Link>
+                        >
+                          {/* Gold left-bar for active page */}
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              display: 'block',
+                              width: 2.5,
+                              minWidth: 2.5,
+                              height: isActive ? 22 : 0,
+                              borderRadius: 2,
+                              background: `linear-gradient(180deg, ${GOLD_SOLID} 0%, rgba(184,134,11,0.45) 100%)`,
+                              flexShrink: 0,
+                              transition: reduced ? 'none' : 'height 0.22s ease',
+                              overflow: 'hidden',
+                            }}
+                          />
+                          {link.label}
+                        </Link>
+
+                        {hasSub && (
+                          <button
+                            type="button"
+                            aria-label={isExpanded ? `Collapse ${link.label}` : `Expand ${link.label}`}
+                            aria-expanded={isExpanded}
+                            onClick={() => setExpandedLink(isExpanded ? null : link.to)}
+                            className="ghb-menu-btn"
+                            style={{
+                              display: 'grid',
+                              placeItems: 'center',
+                              minHeight: 44,
+                              minWidth: 44,
+                              background: 'none',
+                              border: 'none',
+                              color: `${GOLD}0.65)`,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              WebkitTapHighlightColor: 'transparent',
+                            }}
+                          >
+                            <motion.span
+                              animate={{ rotate: isExpanded ? 180 : 0 }}
+                              transition={{ duration: reduced ? 0 : 0.20 }}
+                            >
+                              <ChevronDown size={16} aria-hidden="true" />
+                            </motion.span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Sub-links — animated expand/collapse */}
+                      {hasSub && (
+                        <AnimatePresence initial={false}>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: reduced ? 0 : 0.22, ease: EASE_OUT }}
+                              style={{ overflow: 'hidden' }}
+                            >
+                              {link.sub!.map((subLink) => (
+                                <Link
+                                  key={subLink.to}
+                                  to={subLink.to}
+                                  onClick={() => handleNav(subLink.to)}
+                                  className="ghb-menu-link"
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 10,
+                                    paddingLeft: 26,
+                                    paddingBlock: 11,
+                                    color: `${CREAM}0.65)`,
+                                    fontSize: '0.95rem',
+                                    fontWeight: 300,
+                                    letterSpacing: '0.01em',
+                                    borderBottom: `1px solid ${CREAM}0.04)`,
+                                    textDecoration: 'none',
+                                    WebkitTapHighlightColor: 'transparent',
+                                    transition: 'color 0.15s',
+                                  }}
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    style={{
+                                      display: 'block',
+                                      width: 4,
+                                      height: 4,
+                                      borderRadius: '50%',
+                                      background: `${GOLD}0.50)`,
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                  {subLink.label}
+                                </Link>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      )}
+
                     </motion.div>
                   )
                 })}

@@ -26,12 +26,13 @@ locals {
 }
 
 resource "aws_route53_record" "certificate_validation" {
-  for_each = local.certificate_validation_records
-  zone_id  = data.aws_route53_zone.this.zone_id
-  name     = each.value.name
-  type     = each.value.type
-  records  = [each.value.record]
-  ttl      = 60
+  for_each        = local.certificate_validation_records
+  zone_id         = data.aws_route53_zone.this.zone_id
+  name            = each.value.name
+  type            = each.value.type
+  records         = [each.value.record]
+  ttl             = 60
+  allow_overwrite = true
 }
 
 resource "aws_acm_certificate_validation" "site" {

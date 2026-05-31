@@ -41,12 +41,22 @@ export function formatHours(settings: BusinessSettings): string {
   return canonical ? 'Monday–Sunday, 9:00 AM–8:00 PM' : 'See current hours'
 }
 
-export function shortDate(value: string): string {
+export function shortDate(value: string | null | undefined): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return '—'
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  }).format(new Date(value))
+  }).format(d)
+}
+
+export function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h}h` : `${h}h ${m}min`
 }
 
 export function cn(...classes: Array<string | false | null | undefined>): string {

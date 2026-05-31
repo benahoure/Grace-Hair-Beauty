@@ -12,10 +12,12 @@ ServiceCategory = Literal["african-braids", "natural", "sew-in", "men", "kids"]
 class ServiceWrite(HtmlStrippingModelMixin, BaseModel):
     name: str = Field(min_length=2, max_length=100)
     category: ServiceCategory
+    subcategory: str | None = Field(default=None, max_length=100)
     description: str = Field(min_length=10, max_length=500)
     startingPrice: int = Field(gt=0)
     durationMinutes: int = Field(gt=0, le=720)
     imageUrl: str
+    imagePosition: str | None = Field(default=None, max_length=50)
     featured: bool = False
     active: bool = True
 
@@ -28,14 +30,17 @@ class ServiceWrite(HtmlStrippingModelMixin, BaseModel):
 class ServicePatch(HtmlStrippingModelMixin, BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=100)
     category: ServiceCategory | None = None
+    subcategory: str | None = Field(default=None, max_length=100)
     description: str | None = Field(default=None, min_length=10, max_length=500)
     startingPrice: int | None = Field(default=None, gt=0)
     durationMinutes: int | None = Field(default=None, gt=0, le=720)
     imageUrl: str | None = None
+    imagePosition: str | None = Field(default=None, max_length=50)
     featured: bool | None = None
     active: bool | None = None
+    addImage: str | None = None  # appends a URL to the images[] gallery list
 
-    @field_validator("imageUrl")
+    @field_validator("imageUrl", "addImage")
     @classmethod
     def validate_optional_image_url(cls, value: str | None) -> str | None:
         return https_url(value) if value else value

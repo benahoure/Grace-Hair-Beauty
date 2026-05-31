@@ -41,11 +41,14 @@ interface DropItem {
 
 // ── Nav items config ──────────────────────────────────────────────────────
 const SERVICE_ITEMS: DropItem[] = [
-  { to: '/services?category=african-braids',   label: 'African Braids',     desc: 'Full braiding service family' },
-  { to: '/services?category=knotless-braids',  label: 'Knotless Braids',    desc: 'Lightweight, natural look' },
-  { to: '/services?category=box-braids',       label: 'Box Braids',         desc: 'Classic parts, beautiful length' },
-  { to: '/services?category=boho-braids',      label: 'Boho Braids',        desc: 'Soft curls and graceful texture' },
-  { to: '/services?category=specialty-braids', label: 'Specialty Braids',   desc: 'Fulani, crochet, twists & custom work' },
+  { to: '/services?category=african-braids',    label: 'Braids & Protective Styles', desc: 'Knotless, box braids, boho & specialty' },
+  { to: '/services?category=knotless-braids',   label: 'Knotless Braids',            desc: 'Lightweight, tension-free styles' },
+  { to: '/services?category=cornrows-feed-in',  label: 'Cornrows & Feed-In',         desc: 'Straight back, feed-in & wig cornrows' },
+  { to: '/services?category=senegalese-twists', label: 'Senegalese & Twists',        desc: 'Senegalese, passion & spring twists' },
+  { to: '/services?category=natural',           label: 'Natural Hair & Ponytails',   desc: 'Natural styles and ponytail services' },
+  { to: '/services?category=sew-in',            label: 'Sew-In, Wigs & Crochet',    desc: 'Wig cornrows and sew-in services' },
+  { to: '/services?category=men',               label: "Men's Styles",               desc: 'Cornrows, braids, twists & locs' },
+  { to: '/services?category=kids',              label: 'Kids & Toddlers',            desc: 'Gentle styles for all ages' },
 ]
 
 const ABOUT_ITEMS: DropItem[] = [
@@ -140,16 +143,33 @@ function NavDropdown({ label, items, to, onHero }: { label: string; items: DropI
   return (
     <div
       ref={wrapperRef}
-      className="relative"
+      className="relative flex items-center"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
+      {/* Label — navigates to the page */}
+      <NavLink
+        to={to}
+        onClick={(event) => {
+          setOpen(false)
+          if (currentLocation === to) {
+            event.preventDefault()
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+          }
+        }}
+        className={({ isActive }) => (isActive ? navActive(onHero) : navIdle(onHero))}
+      >
+        {label}
+      </NavLink>
+
+      {/* Chevron — toggles dropdown only */}
       <button
         type="button"
-        className={navIdle(onHero) + ' flex cursor-pointer items-center gap-1'}
-        onClick={() => {
-          setOpen((value) => !value)
-        }}
+        aria-label={`${label} sub-menu`}
+        aria-expanded={open}
+        aria-haspopup="true"
+        aria-controls={menuId}
+        onClick={() => setOpen((v) => !v)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {
             event.preventDefault()
@@ -159,11 +179,11 @@ function NavDropdown({ label, items, to, onHero }: { label: string; items: DropI
             }, 0)
           }
         }}
-        aria-expanded={open}
-        aria-haspopup="true"
-        aria-controls={menuId}
+        className={
+          'ml-1 flex items-center transition-colors ' +
+          (onHero ? 'text-cocoa/80 hover:text-cocoa' : 'text-mocha hover:text-cocoa')
+        }
       >
-        {label}
         <motion.span
           animate={{ rotate: open ? 180 : 0 }}
           transition={{ duration: 0.18 }}
@@ -447,7 +467,20 @@ export function Header({ settings }: HeaderProps) {
         settings={settings}
         triggerRef={hamburgerRef}
         links={[
-          { to: '/services',  label: 'Services' },
+          {
+            to: '/services',
+            label: 'Services',
+            sub: [
+              { to: '/services?category=african-braids',    label: 'Braids & Protective Styles' },
+              { to: '/services?category=knotless-braids',   label: 'Knotless Braids' },
+              { to: '/services?category=cornrows-feed-in',  label: 'Cornrows & Feed-In' },
+              { to: '/services?category=senegalese-twists', label: 'Senegalese & Twists' },
+              { to: '/services?category=natural',           label: 'Natural Hair & Ponytails' },
+              { to: '/services?category=sew-in',            label: 'Sew-In, Wigs & Crochet' },
+              { to: '/services?category=men',               label: "Men's Styles" },
+              { to: '/services?category=kids',              label: 'Kids & Toddlers' },
+            ],
+          },
           { to: '/products',  label: 'Products' },
           { to: '/portfolio', label: 'Portfolio' },
           { to: '/book',      label: 'Book' },

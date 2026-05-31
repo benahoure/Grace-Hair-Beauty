@@ -37,6 +37,41 @@ def test_require_admin_rejects_non_admin_group() -> None:
         )
 
 
+def test_require_admin_accepts_bracketed_string_group_claim() -> None:
+    from common.security import require_admin
+
+    # HTTP API JWT authorizers serialize array claims to a bracketed string.
+    assert (
+        require_admin(
+            {
+                "requestContext": {
+                    "authorizer": {
+                        "jwt": {"claims": {"sub": "admin-1", "cognito:groups": "[admins]"}}
+                    }
+                }
+            }
+        )
+        == "admin-1"
+    )
+
+
+def test_require_admin_accepts_multi_group_bracketed_string() -> None:
+    from common.security import require_admin
+
+    assert (
+        require_admin(
+            {
+                "requestContext": {
+                    "authorizer": {
+                        "jwt": {"claims": {"sub": "admin-2", "cognito:groups": "[staff, admins]"}}
+                    }
+                }
+            }
+        )
+        == "admin-2"
+    )
+
+
 def test_decode_cursor_rejects_non_dict_payload() -> None:
     import base64
 

@@ -5,7 +5,7 @@ Production monorepo for Grace Hair Beauty, an Indianapolis salon focused on Afri
 ## Tech Stack
 
 - Frontend: React, Vite, TypeScript, Tailwind CSS, React Router, Framer Motion, Three.js, React Three Fiber, Zod, Vitest.
-- Backend: Python 3.13 Lambda, Pydantic v2, AWS Lambda Powertools, boto3, DynamoDB, SES, Cognito JWT auth.
+- Backend: Python 3.14 Lambda, Pydantic v2, AWS Lambda Powertools, boto3, DynamoDB, SES, Cognito JWT auth.
 - Infrastructure: Terraform, S3 private buckets, CloudFront OAC, WAF, Route 53, ACM, API Gateway HTTP API, DynamoDB, Cognito, SES, CloudWatch, GitHub Actions OIDC.
 
 ## Local Setup
@@ -20,8 +20,9 @@ The frontend uses documented mock data only when `VITE_API_BASE_URL` is not set.
 
 ```bash
 cd lambdas
-python3.13 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
+python --version # expected: Python 3.14.x
 pip install -r requirements-dev.txt
 pytest
 ```
