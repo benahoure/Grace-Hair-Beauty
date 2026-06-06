@@ -18,7 +18,7 @@ DEFAULT_HOURS = {
 DEFAULT_SETTINGS = {
     "businessName": "Grace Hair Beauty",
     "phone": "+13178503001",
-    "email": "ghbeauty24@gmail.com",
+    "email": "info@gracehairsbeauty.com",
     "address": {
         "street": "955 Baden Manor Dr",
         "city": "Indianapolis",

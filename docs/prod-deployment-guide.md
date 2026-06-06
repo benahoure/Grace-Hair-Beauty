@@ -29,7 +29,7 @@ Use GitHub Actions OIDC instead of static AWS keys. Production applies should re
 - SES production access has been approved.
 - GitHub repository has an AWS OIDC IAM role for production deployment.
 - GitHub production environment requires manual approval.
-- Production admin inbox is monitored: `ghbeauty24@gmail.com`.
+- Production admin inbox is monitored: `info@gracehairsbeauty.com`.
 - Production Cognito admin user process is ready.
 
 ## Recommended GitHub Actions Secrets and Variables
