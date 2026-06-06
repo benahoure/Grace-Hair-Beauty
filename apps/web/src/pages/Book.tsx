@@ -23,7 +23,7 @@ export function Book() {
         eyebrow="Book Appointment"
         title="Reserve Your"
         italicTitle="Chair Today."
-        description="Choose your service, share your preferred date, and we’ll confirm your appointment within 24 hours."
+        description="Choose your service, select your preferred date and time, and secure your appointment with a $30 deposit. Instant confirmation."
         tone="dark"
       />
 

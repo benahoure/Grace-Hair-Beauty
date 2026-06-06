@@ -45,3 +45,10 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+stripe-booking.md
+
+# Claude Code / AI assistant artifacts — do not commit
+.claude/
+.agents/
+skills-lock.json
+CLAUDE.md

@@ -18,10 +18,13 @@ class Config:
     assets_bucket: str
     cdn_base_url: str
     environment: str
-    ses_sender_email: str
-    admin_alert_email: str
+    zoho_smtp_user_ssm: str
+    zoho_smtp_password_ssm: str
+    zoho_admin_emails_ssm: str
     kms_key_id: str | None
     business_settings_distribution_id: str | None
+    stripe_secret_key_ssm: str | None
+    stripe_webhook_secret_ssm: str | None
 
 
 def require_env(name: str) -> str:
@@ -45,8 +48,11 @@ def get_config() -> Config:
         assets_bucket=os.environ.get("ASSETS_BUCKET", ""),
         cdn_base_url=require_env("CDN_BASE_URL").rstrip("/"),
         environment=os.environ.get("ENVIRONMENT", "dev"),
-        ses_sender_email=require_env("SES_SENDER_EMAIL"),
-        admin_alert_email=require_env("ADMIN_ALERT_EMAIL"),
+        zoho_smtp_user_ssm=require_env("ZOHO_SMTP_USER_SSM"),
+        zoho_smtp_password_ssm=require_env("ZOHO_SMTP_PASSWORD_SSM"),
+        zoho_admin_emails_ssm=require_env("ZOHO_ADMIN_EMAILS_SSM"),
         kms_key_id=os.environ.get("KMS_KEY_ID"),
         business_settings_distribution_id=os.environ.get("BUSINESS_SETTINGS_DISTRIBUTION_ID"),
+        stripe_secret_key_ssm=os.environ.get("STRIPE_SECRET_KEY_SSM"),
+        stripe_webhook_secret_ssm=os.environ.get("STRIPE_WEBHOOK_SECRET_SSM"),
     )

@@ -14,6 +14,8 @@ import { Portfolio } from './pages/Portfolio'
 import { Products } from './pages/Products'
 import { Reviews } from './pages/Reviews'
 import { Services } from './pages/Services'
+import { AppointmentPortal } from './pages/AppointmentPortal'
+import { BookingSuccess } from './pages/BookingSuccess'
 import { AdminAppointments } from './pages/admin/AdminAppointments'
 import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminMessages } from './pages/admin/AdminMessages'
@@ -46,6 +48,8 @@ export function App() {
         <Route path="about" element={<About />} />
         <Route path="reviews" element={<Reviews />} />
         <Route path="contact" element={<Contact />} />
+        <Route path="appointment/:token" element={<AppointmentPortal />} />
+        <Route path="booking/success" element={<BookingSuccess />} />
         <Route path="*" element={<NotFound />} />
       </Route>
 

@@ -29,9 +29,16 @@ function maxBookingDateInSalonTimeZone(date = new Date()): string {
 
 const phoneSchema = z
   .string()
-  .min(7, 'Enter a valid phone number.')
-  .max(20, 'Phone number is too long.')
-  .regex(/^[+()\-\s\d.]+$/, 'Enter a valid phone number.')
+  .trim()
+  .min(1, 'Phone number is required.')
+  .refine(
+    (val) => val.replace(/\D/g, '').length === 10,
+    'Enter a complete 10-digit phone number.'
+  )
+  .refine(
+    (val) => !/^(\d)\1{9}$/.test(val.replace(/\D/g, '')),
+    'Enter a real phone number.'
+  )
 
 const futureDate = z
   .string()

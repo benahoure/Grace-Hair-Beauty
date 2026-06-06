@@ -8,7 +8,14 @@ from pathlib import Path
 def test_appointment_honeypot_returns_silent_created(lambda_context) -> None:
     from appointments.handler import lambda_handler
 
-    response = lambda_handler({"body": json.dumps({"honeypot": "bot"})}, lambda_context)
+    response = lambda_handler(
+        {
+            "rawPath": "/appointments/payment-intent",
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({"honeypot": "bot"}),
+        },
+        lambda_context,
+    )
 
     assert response["statusCode"] == 201
 
@@ -18,18 +25,16 @@ def test_appointment_handler_accepts_portfolio_style_id(monkeypatch, lambda_cont
 
     captured = {}
 
-    def fake_create_appointment(request):
+    def fake_create_payment_intent_hold(request, client_ip, user_agent):
         captured["portfolioStyleId"] = request.portfolioStyleId
-        return {
-            "appointmentId": "appt-1",
-            "status": "pending",
-            "message": "Your appointment request has been received. We will confirm within 24 hours.",
-        }
+        return {"appointmentId": "appt-1", "clientSecret": "pi_fake_secret"}
 
-    monkeypatch.setattr(handler, "create_appointment", fake_create_appointment)
+    monkeypatch.setattr(handler, "create_payment_intent_hold", fake_create_payment_intent_hold)
 
     response = handler.lambda_handler(
         {
+            "rawPath": "/appointments/payment-intent",
+            "requestContext": {"http": {"method": "POST"}},
             "body": json.dumps(
                 {
                     "serviceId": "svc-knotless-braids",
@@ -39,9 +44,10 @@ def test_appointment_handler_accepts_portfolio_style_id(monkeypatch, lambda_cont
                     "clientPhone": "3175550123",
                     "preferredDate": (dt.date.today() + dt.timedelta(days=2)).isoformat(),
                     "preferredTime": "10:00",
+                    "policyAccepted": True,
                     "honeypot": "",
                 }
-            )
+            ),
         },
         lambda_context,
     )
@@ -51,26 +57,26 @@ def test_appointment_handler_accepts_portfolio_style_id(monkeypatch, lambda_cont
 
 
 def test_appointment_service_persists_portfolio_style_id(monkeypatch) -> None:
+    from types import SimpleNamespace
+
     from appointments import service
-    from appointments.models import AppointmentRequest
+    from appointments.models import PaymentIntentRequest
 
     writes = []
     monkeypatch.setattr(
         service,
         "get_item",
-        lambda *args, **kwargs: {"serviceId": "svc-knotless-braids", "name": "Knotless Braids", "active": True},
+        lambda *args, **kwargs: {"serviceId": "svc-knotless-braids", "name": "Knotless Braids", "active": True, "startingPrice": 15000},
     )
-    sent_customer_emails = []
-    sent_admin_alerts = []
     monkeypatch.setattr(service, "put_item", lambda table, item: writes.append((table, item)))
-    monkeypatch.setattr(service, "best_effort_send_email", lambda **kwargs: sent_customer_emails.append(kwargs) or True)
+    monkeypatch.setattr(service, "_slot_is_available", lambda *args, **kwargs: True)
     monkeypatch.setattr(
         service,
-        "notify_admin",
-        lambda *args, **kwargs: sent_admin_alerts.append((args, kwargs)) or True,
+        "create_payment_intent",
+        lambda *args, **kwargs: SimpleNamespace(id="pi_test_123", client_secret="pi_test_123_secret"),
     )
 
-    request = AppointmentRequest.model_validate(
+    request = PaymentIntentRequest.model_validate(
         {
             "serviceId": "svc-knotless-braids",
             "portfolioStyleId": "style-boho-waist-length",
@@ -79,25 +85,31 @@ def test_appointment_service_persists_portfolio_style_id(monkeypatch) -> None:
             "clientPhone": "3175550123",
             "preferredDate": (dt.date.today() + dt.timedelta(days=2)).isoformat(),
             "preferredTime": "10:00",
+            "policyAccepted": True,
             "honeypot": "",
         }
     )
 
-    service.create_appointment(request)
+    result = service.create_payment_intent_hold(request, client_ip=None, user_agent=None)
 
     appointment_item = next(item for table, item in writes if table == "appointments")
-    audit_item = next(item for table, item in writes if table == "audit-log")
     assert appointment_item["portfolioStyleId"] == "style-boho-waist-length"
-    assert audit_item["detail"]["portfolioStyleId"] == "style-boho-waist-length"
-    assert "Appointment Request Received" in sent_customer_emails[0]["html_body"]
-    assert "New Booking Request" in sent_admin_alerts[0][1]["html_body"]
-    assert "Amara Test" in sent_admin_alerts[0][1]["html_body"]
+    assert appointment_item["status"] == "pending_payment"
+    assert appointment_item["stripePaymentIntentId"] == "pi_test_123"
+    assert result["clientSecret"] == "pi_test_123_secret"
 
 
 def test_validation_errors_use_standardized_error_shape(lambda_context) -> None:
     from appointments.handler import lambda_handler
 
-    response = lambda_handler({"body": json.dumps({"serviceId": "", "honeypot": ""})}, lambda_context)
+    response = lambda_handler(
+        {
+            "rawPath": "/appointments/payment-intent",
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({"serviceId": "", "honeypot": ""}),
+        },
+        lambda_context,
+    )
     body = json.loads(response["body"])
 
     assert response["statusCode"] == 400
@@ -171,7 +183,7 @@ def test_public_api_router_dispatches_required_public_routes(monkeypatch, lambda
     monkeypatch.setattr(handler, "reviews_handler", fake_handler("reviews"))
 
     for method_name, raw_path in [
-        ("POST", "/appointments"),
+        ("POST", "/appointments/payment-intent"),
         ("POST", "/contact"),
         ("GET", "/reviews"),
         ("POST", "/reviews"),
@@ -183,7 +195,7 @@ def test_public_api_router_dispatches_required_public_routes(monkeypatch, lambda
         assert response["statusCode"] == 200
 
     assert dispatched == [
-        ("appointments", "/appointments", "POST"),
+        ("appointments", "/appointments/payment-intent", "POST"),
         ("contact", "/contact", "POST"),
         ("reviews", "/reviews", "GET"),
         ("reviews", "/reviews", "POST"),

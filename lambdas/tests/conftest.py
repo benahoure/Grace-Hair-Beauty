@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import os
+import sys
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
+
+# Stub out the stripe package so tests that transitively import common.stripe_client
+# don't fail with ModuleNotFoundError when the package isn't installed in the test venv.
+if "stripe" not in sys.modules:
+    sys.modules["stripe"] = MagicMock()
 
 
 @pytest.fixture(autouse=True)
