@@ -8,7 +8,7 @@ locals {
   api_allowed_origins = distinct(concat([var.allowed_origin], var.additional_allowed_origins))
 
   public_submission_route_throttles = {
-    "POST /appointments" = {
+    "POST /appointments/payment-intent" = {
       rate_limit  = var.api_submission_throttle_rate_limit
       burst_limit = var.api_submission_throttle_burst_limit
     }
@@ -19,6 +19,10 @@ locals {
     "POST /reviews" = {
       rate_limit  = var.api_submission_throttle_rate_limit
       burst_limit = var.api_submission_throttle_burst_limit
+    }
+    "POST /webhooks/stripe" = {
+      rate_limit  = 100
+      burst_limit = 50
     }
   }
 
@@ -76,7 +80,17 @@ locals {
     "GET /portfolio",
     "GET /reviews",
     "GET /business-settings",
-    "POST /appointments",
+    "GET /availability",
+    # Booking flow
+    "POST /appointments/payment-intent",
+    "POST /appointments/{appointmentId}/confirm",
+    # Client portal
+    "GET /appointments/portal/{token}",
+    "POST /appointments/portal/{token}/reschedule",
+    "POST /appointments/portal/{token}/cancel",
+    # Stripe webhook
+    "POST /webhooks/stripe",
+    # Other public forms
     "POST /contact",
     "POST /reviews",
   ])
@@ -97,6 +111,11 @@ locals {
     "DELETE /admin/reviews/{reviewId}",
     "GET /admin/appointments",
     "PATCH /admin/appointments/{appointmentId}",
+    "POST /admin/appointments/{appointmentId}/cancel-refund",
+    "POST /admin/appointments/{appointmentId}/reschedule",
+    "POST /admin/appointments/{appointmentId}/refund",
+    "POST /admin/appointments/{appointmentId}/forfeit",
+    "POST /admin/appointments/{appointmentId}/override",
     "GET /admin/contact-messages",
     "PATCH /admin/contact-messages/{messageId}",
     "POST /admin/contact-messages/{messageId}/reply",

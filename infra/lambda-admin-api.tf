@@ -31,10 +31,12 @@ module "admin_api" {
     CLOUDFRONT_DIST_ID                = aws_cloudfront_distribution.frontend.id
     BUSINESS_SETTINGS_DISTRIBUTION_ID = aws_cloudfront_distribution.frontend.id
     JWKS_URL                          = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.this.id}/.well-known/jwks.json"
-    SES_SENDER_EMAIL                  = var.ses_sender_email
-    ADMIN_ALERT_EMAIL                 = var.admin_alert_email
     KMS_KEY_ID                        = aws_kms_key.data.arn
     CDN_BASE_URL                      = "https://cdn.${var.domain_name}"
+    STRIPE_SECRET_KEY_SSM             = aws_ssm_parameter.stripe_secret_key.name
+    ZOHO_SMTP_USER_SSM                = aws_ssm_parameter.zoho_smtp_user.name
+    ZOHO_SMTP_PASSWORD_SSM            = aws_ssm_parameter.zoho_smtp_password.name
+    ZOHO_ADMIN_EMAILS_SSM             = aws_ssm_parameter.zoho_admin_emails.name
   }
 
   attach_policy_statements = true
@@ -59,18 +61,6 @@ module "admin_api" {
       actions   = ["s3:ListBucket"]
       resources = [aws_s3_bucket.assets.arn]
     }
-    ses_send = {
-      effect    = "Allow"
-      actions   = ["ses:SendEmail"]
-      resources = ["*"]
-      conditions = {
-        from_address = {
-          test     = "StringEquals"
-          variable = "ses:FromAddress"
-          values   = [var.ses_sender_email]
-        }
-      }
-    }
     cloudfront_invalidate = {
       effect    = "Allow"
       actions   = ["cloudfront:CreateInvalidation"]
@@ -80,6 +70,16 @@ module "admin_api" {
       effect    = "Allow"
       actions   = ["cognito-idp:ListUsers", "cognito-idp:AdminGetUser", "cognito-idp:AdminAddUserToGroup"]
       resources = [aws_cognito_user_pool.this.arn]
+    }
+    ssm_stripe = {
+      effect    = "Allow"
+      actions   = ["ssm:GetParameter", "ssm:GetParameters"]
+      resources = [
+        aws_ssm_parameter.stripe_secret_key.arn,
+        aws_ssm_parameter.zoho_smtp_user.arn,
+        aws_ssm_parameter.zoho_smtp_password.arn,
+        aws_ssm_parameter.zoho_admin_emails.arn,
+      ]
     }
     xray = {
       effect    = "Allow"

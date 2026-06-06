@@ -148,12 +148,73 @@ export interface ReviewSubmission {
   honeypot: string
 }
 
+export type DepositStatus = 'paid' | 'refund_pending' | 'refunded' | 'forfeited' | 'transferred' | 'applied_to_balance'
+export type AppointmentStatus = 'pending_payment' | 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'
+
+export type AvailabilityDateStatus = 'available' | 'fully_booked' | 'closed' | 'past' | 'blocked_24hr' | 'blocked'
+
+export interface AvailabilityDate {
+  date: string
+  status: AvailabilityDateStatus
+  availableSlots: number
+}
+
+export interface AvailabilitySlot {
+  time: string       // display e.g. "10:00 AM"
+  datetime: string   // ISO 8601 e.g. "2026-06-04T10:00:00-05:00"
+  available: boolean
+}
+
+export interface MonthAvailability {
+  month: string
+  timezone: string
+  dates: AvailabilityDate[]
+}
+
+export interface DateAvailability {
+  date: string
+  timezone: string
+  slots: AvailabilitySlot[]
+}
+
 export interface AdminAppointment extends AppointmentRequest {
   appointmentId: string
+  appointmentToken?: string
   serviceName: string
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed'
+  servicePrice?: number
+  status: AppointmentStatus
+  depositStatus?: DepositStatus | null
+  depositAmount?: number
+  stripePaymentIntentId?: string
+  stripeChargeId?: string
+  refundStatus?: 'none' | 'pending' | 'completed' | 'failed'
+  refundFailureReason?: string | null
+  adminNote?: string | null
+  adminNotes?: string | null
+  adminOverrideReason?: string | null
+  rescheduledAt?: string | null
+  rescheduledFrom?: string | null
+  rescheduledBy?: 'client' | 'admin' | null
+  createdAt: string
+}
+
+export interface PortalAppointment {
+  appointmentId: string
+  status: AppointmentStatus
+  depositStatus: DepositStatus | null
+  depositAmount: number
+  remainingBalance: number
+  serviceName: string
+  servicePrice: number
+  preferredDate: string
+  preferredTime: string
+  clientName: string
+  clientEmail: string
+  clientPhone: string
+  notes?: string
   adminNote?: string | null
   createdAt: string
+  rescheduledAt?: string | null
 }
 
 export interface AdminReview {

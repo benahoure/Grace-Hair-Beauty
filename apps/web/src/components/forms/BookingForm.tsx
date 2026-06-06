@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
+import { loadStripe } from '@stripe/stripe-js'
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -8,12 +10,324 @@ import type { z } from 'zod'
 import { ApiRequestError, api } from '../../lib/api'
 import { formatDuration, formatPrice } from '../../lib/format'
 import { mockPortfolio } from '../../lib/mockData'
-import { bookingSchema, tomorrowInSalonTimeZone } from '../../lib/validators'
-import type { AppointmentRequest, ServiceCategory } from '../../types'
+import { bookingSchema } from '../../lib/validators'
+import type { AppointmentRequest, AvailabilityDate, AvailabilitySlot, ServiceCategory } from '../../types'
+
+const stripePromise = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string)
+  : null
+
+const POLICY_CHECKBOX_TEXT =
+  'I understand and agree that a $30 deposit is required to secure my appointment. The deposit will be applied toward my final service balance. I understand that I may reschedule online more than 24 hours before my appointment and my deposit will transfer to the new date. I understand that cancellations or rescheduling requests made less than 24 hours before the appointment may result in forfeiture of my deposit. I have read and agree to the Booking, Cancellation, Rescheduling, and Refund Policy.'
+
+interface StripePaymentFormProps {
+  appointmentId: string
+  policyAccepted: boolean
+  onPolicyChange: (v: boolean) => void
+  onSuccess: (paymentIntentId: string) => void
+  isConfirming: boolean
+  isMock: boolean
+}
+
+function StripePaymentForm({ appointmentId, policyAccepted, onPolicyChange, onSuccess, isConfirming, isMock }: StripePaymentFormProps) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [paying, setPaying] = useState(false)
+  const [stripeError, setStripeError] = useState<string | null>(null)
+
+  const handlePay = async () => {
+    if (!policyAccepted) return
+    if (isMock) { onSuccess('pi_mock'); return }
+    if (!stripe || !elements) return
+    setPaying(true)
+    setStripeError(null)
+    // Persist appointmentId so the /booking/success redirect page can call confirm
+    sessionStorage.setItem('ghb_pending_appt', appointmentId)
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/booking/success`,
+      },
+      redirect: 'if_required',
+    })
+    setPaying(false)
+    if (error) {
+      setStripeError(error.message ?? 'Payment failed. Please try again.')
+      return
+    }
+    if (paymentIntent?.status === 'succeeded') {
+      onSuccess(paymentIntent.id)
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Policy checkbox */}
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-cream-border bg-cream p-4">
+        <input
+          type="checkbox"
+          checked={policyAccepted}
+          onChange={(e) => onPolicyChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-[#D4A843]"
+        />
+        <span className="text-[0.72rem] leading-relaxed text-mocha">
+          {POLICY_CHECKBOX_TEXT}
+        </span>
+      </label>
+
+      {/* Stripe payment input (hidden in mock mode) */}
+      {!isMock && (
+        <div className="rounded-xl border border-cream-border bg-cream p-4">
+          <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha">
+            Payment Method
+          </p>
+          <p className="mb-3 text-[0.65rem] leading-relaxed text-mocha/55">
+            Pay your $30 deposit using a debit card, credit card, Apple Pay, Google Pay, Cash App Pay, or Klarna. Available options vary by device, location, and eligibility.
+          </p>
+          <PaymentElement />
+        </div>
+      )}
+
+      {isMock && (
+        <div className="rounded-xl border border-dashed border-gold-dark/40 bg-gold/5 p-4 text-center">
+          <p className="text-xs text-mocha/60">
+            <span className="font-semibold text-mocha">Dev mode</span> — Stripe not configured. Payment will be simulated.
+          </p>
+        </div>
+      )}
+
+      {stripeError && (
+        <p className="rounded-lg border border-error/30 bg-error/8 p-3 text-sm text-error">{stripeError}</p>
+      )}
+
+      <button
+        type="button"
+        className="btn btn-gold w-full"
+        disabled={!policyAccepted || paying || isConfirming || (!isMock && (!stripe || !elements))}
+        onClick={handlePay}
+      >
+        {paying ? 'Processing…' : isConfirming ? 'Confirming…' : 'Pay $30 Deposit to Book'}
+      </button>
+
+      <p className="text-center text-[0.65rem] text-mocha/50">
+        Powered by Stripe · Your card is never stored on this site
+      </p>
+    </div>
+  )
+}
+
+// ── Availability Calendar ──────────────────────────────────────────────────────
+
+const CAL_DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function calDayClass(status: AvailabilityDate['status'] | 'loading' | 'selected'): string {
+  const base = 'relative mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium transition-colors '
+  switch (status) {
+    case 'selected':     return base + 'bg-gold text-espresso font-bold cursor-pointer shadow-sm'
+    case 'available':    return base + 'text-espresso hover:bg-gold/20 cursor-pointer'
+    case 'fully_booked': return base + 'text-mocha/30 cursor-not-allowed'
+    case 'blocked_24hr': return base + 'text-amber-700/50 cursor-not-allowed'
+    case 'blocked':      return base + 'text-mocha/20 cursor-not-allowed'
+    case 'closed':       return base + 'text-mocha/20 cursor-default'
+    case 'past':         return base + 'text-mocha/15 cursor-default'
+    case 'loading':      return base + 'text-mocha/25 cursor-default'
+    default:             return base + 'text-mocha/20 cursor-default'
+  }
+}
+
+function AvailabilityCalendar({
+  year,
+  month,
+  selectedDate,
+  onDateSelect,
+  dates,
+  isLoading,
+  onMonthChange,
+}: {
+  year: number
+  month: number
+  selectedDate: string
+  onDateSelect: (date: string) => void
+  dates: AvailabilityDate[] | undefined
+  isLoading: boolean
+  onMonthChange: (dir: -1 | 1) => void
+}) {
+  const firstDay = new Date(year, month - 1, 1)
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const offset = (firstDay.getDay() + 6) % 7
+  const monthLabel = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+  const nowYear = today.getFullYear()
+  const nowMonth = today.getMonth() + 1
+  const canGoPrev = year > nowYear || (year === nowYear && month > nowMonth)
+  let maxYear = nowYear
+  let maxMonth = nowMonth + 2
+  if (maxMonth > 12) { maxMonth -= 12; maxYear++ }
+  const canGoNext = year < maxYear || (year === maxYear && month < maxMonth)
+
+  // Build lookup: date → AvailabilityDate
+  const byDate = useMemo(() => {
+    const map: Record<string, AvailabilityDate> = {}
+    for (const d of (dates ?? [])) map[d.date] = d
+    return map
+  }, [dates])
+
+  const hasAvailableInMonth = (dates ?? []).some((d) => d.status === 'available')
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < offset; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+
+  return (
+    <div className="rounded-xl border border-cream-border bg-paper p-4">
+      {/* Month navigation */}
+      <div className="mb-3 flex items-center justify-between">
+        <button type="button" disabled={!canGoPrev} onClick={() => onMonthChange(-1)}
+          className="rounded-lg p-1.5 text-mocha/50 transition-colors hover:text-cocoa disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Previous month">
+          <ChevronLeft size={18} aria-hidden="true" />
+        </button>
+        <p className="text-sm font-semibold text-espresso">{monthLabel}</p>
+        <button type="button" disabled={!canGoNext} onClick={() => onMonthChange(1)}
+          className="rounded-lg p-1.5 text-mocha/50 transition-colors hover:text-cocoa disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Next month">
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* Day headers */}
+      <div className="mb-1 grid grid-cols-7">
+        {CAL_DAY_HEADERS.map((d) => (
+          <div key={d} className="py-1 text-center text-[0.6rem] font-bold uppercase tracking-wider text-mocha/40">{d}</div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div className="grid grid-cols-7 gap-y-1">
+        {cells.map((day, idx) => {
+          if (day === null) return <div key={`e-${idx}`} />
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const isSelected = dateStr === selectedDate
+          const info = byDate[dateStr]
+          const status = dateStr <= todayStr ? 'past' : isLoading ? 'loading' : (info?.status ?? 'loading')
+          const cellStatus = isSelected ? 'selected' : status
+          const isClickable = status === 'available' || isSelected
+
+          return (
+            <button key={dateStr} type="button"
+              disabled={!isClickable}
+              onClick={() => isClickable ? onDateSelect(dateStr) : undefined}
+              className={calDayClass(cellStatus)}
+              title={status === 'fully_booked' ? 'Fully booked' : status === 'blocked_24hr' ? 'Call salon — within 24 hrs' : status === 'blocked' ? 'Unavailable' : status === 'closed' ? 'Closed' : undefined}
+            >
+              {day}
+              {status === 'available' && !isSelected && (
+                <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-gold-dark/60" aria-hidden="true" />
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 px-1">
+        <span className="flex items-center gap-1.5 text-[0.6rem] text-mocha/50">
+          <span className="h-2 w-2 rounded-full bg-gold/70" aria-hidden="true" />Available
+        </span>
+        <span className="flex items-center gap-1.5 text-[0.6rem] text-mocha/50">
+          <span className="h-2 w-2 rounded-full bg-mocha/20" aria-hidden="true" />Fully booked
+        </span>
+        <span className="flex items-center gap-1.5 text-[0.6rem] text-mocha/50">
+          <span className="h-2 w-2 rounded-full bg-cream-border" aria-hidden="true" />Closed
+        </span>
+      </div>
+
+      {isLoading && (
+        <p className="mt-2 text-center text-[0.65rem] text-mocha/40">Loading availability…</p>
+      )}
+
+      {!isLoading && dates && !hasAvailableInMonth && (
+        <div className="mt-3 rounded-lg border border-gold/20 bg-gold-pale/10 p-3 text-center">
+          <p className="text-xs text-mocha/70">No available dates this month.</p>
+          {canGoNext && (
+            <button type="button" onClick={() => onMonthChange(1)}
+              className="mt-1 text-xs font-semibold text-gold-dark underline-offset-2 hover:underline">
+              Check next month →
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Time Slot Picker ───────────────────────────────────────────────────────────
+
+function rawTimeFromSlot(slot: AvailabilitySlot): string {
+  // "2026-06-04T10:00:00-05:00" → "10:00"
+  const parts = slot.datetime.split('T')[1]?.split(':') ?? []
+  return `${parts[0] ?? '00'}:${parts[1] ?? '00'}`
+}
+
+function TimeSlotPicker({
+  slots,
+  selectedRawTime,
+  onSelect,
+  isLoading,
+}: {
+  slots: AvailabilitySlot[] | undefined
+  selectedRawTime: string
+  onSelect: (rawTime: string) => void
+  isLoading: boolean
+}) {
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {[1, 2, 3, 4, 5, 6].map((n) => (
+          <div key={n} className="h-10 animate-pulse rounded-lg bg-cream-deep" />
+        ))}
+      </div>
+    )
+  }
+  if (!slots || slots.length === 0) {
+    return (
+      <p className="rounded-xl border border-cream-border bg-cream-deep/30 p-4 text-center text-sm text-mocha/60">
+        No available times for this date. Please choose a different day.
+      </p>
+    )
+  }
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      {slots.map((slot) => {
+        const raw = rawTimeFromSlot(slot)
+        const isSelected = raw === selectedRawTime
+        return (
+          <button
+            key={slot.datetime}
+            type="button"
+            onClick={() => onSelect(raw)}
+            className={`flex items-center justify-center rounded-lg border px-2 py-2.5 text-xs font-semibold transition-all ${
+              isSelected
+                ? 'border-gold bg-gold text-espresso shadow-sm'
+                : 'border-cream-border bg-paper text-espresso hover:border-gold/60 hover:bg-gold-pale/20'
+            }`}
+          >
+            {slot.time}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Main Form ─────────────────────────────────────────────────────────────────
 
 type BookingErrors = Partial<Record<keyof AppointmentRequest, string>>
 
-const STEPS = ['Service', 'Your Info', 'Date & Time']
+const STEPS = ['Service', 'Your Info', 'Choose Date & Time', 'Secure Deposit']
 
 interface BookingCategoryDef {
   id: string
@@ -104,6 +418,14 @@ function flattenErrors(error: z.ZodError<AppointmentRequest>): BookingErrors {
   }, {})
 }
 
+function formatPhoneNumber(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 10)
+  if (digits.length === 0) return ''
+  if (digits.length <= 3) return `(${digits}`
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+}
+
 function formatBookingDate(dateStr: string): string {
   if (!dateStr) return ''
   const [year, month, day] = dateStr.split('-').map(Number)
@@ -118,9 +440,13 @@ function formatBookingTime(timeStr: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
-// Scrolls an element into view accounting for the sticky header (76px) + breathing room.
 function scrollTo(el: HTMLElement | null, block: ScrollLogicalPosition = 'start') {
   el?.scrollIntoView({ behavior: 'smooth', block })
+}
+
+function todayLocal(): { year: number; month: number } {
+  const d = new Date()
+  return { year: d.getFullYear(), month: d.getMonth() + 1 }
 }
 
 export function BookingForm() {
@@ -137,24 +463,19 @@ export function BookingForm() {
   )
   const initialServiceId = requestedService || requestedStyleServiceId
   const [step, setStep] = useState(1)
+  const [policyAccepted, setPolicyAccepted] = useState(false)
+  const [stripePaymentHold, setStripePaymentHold] = useState<{ appointmentId: string; clientSecret: string } | null>(null)
+  const [portalUrl, setPortalUrl] = useState<string | null>(null)
+  const isMock = !import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
   const [selectedCategory, setSelectedCategory] = useState('')
   const [errors, setErrors] = useState<BookingErrors>({})
+  const [calendarMonth, setCalendarMonth] = useState<{ year: number; month: number }>(todayLocal)
   const errorRef = useRef<HTMLDivElement>(null)
-
-  // ── Scroll / focus refs ────────────────────────────────────────────────────
-  // The form card itself — scrolled into view on every step transition.
   const formRef = useRef<HTMLFormElement>(null)
-  // Top of the specific-service list (step 1b) — scrolled to after category pick.
   const serviceListRef = useRef<HTMLDivElement>(null)
-  // The action-button row — scrolled to after a service is selected so the user
-  // can immediately see and tap "Continue".
   const continueAreaRef = useRef<HTMLDivElement>(null)
-  // First focusable field per step, focused after the scroll animation settles.
   const clientNameRef = useRef<HTMLInputElement>(null)
-  const preferredDateRef = useRef<HTMLInputElement>(null)
-  // Skip scroll on the very first render (user just arrived at the page).
   const hasMounted = useRef(false)
-  // Scrolled into view automatically when the confirmation screen renders.
   const confirmRef = useRef<HTMLElement>(null)
 
   const [formData, setFormData] = useState<AppointmentRequest>({
@@ -206,7 +527,23 @@ export function BookingForm() {
     queryFn: () => api.getServices(),
   })
 
-  // When a service is pre-selected via URL, auto-derive and set its booking category
+  // Month availability: re-fetch when serviceId or month changes
+  const monthKey = `${calendarMonth.year}-${String(calendarMonth.month).padStart(2, '0')}`
+  const monthAvailabilityQuery = useQuery({
+    queryKey: ['avail-month', monthKey, formData.serviceId],
+    queryFn: () => api.getMonthAvailability({ month: monthKey, serviceId: formData.serviceId || undefined }),
+    enabled: step >= 3,
+    staleTime: 60_000,
+  })
+
+  // Date slots: re-fetch when serviceId or date changes
+  const dateSlotsQuery = useQuery({
+    queryKey: ['avail-slots', formData.preferredDate, formData.serviceId],
+    queryFn: () => api.getDateSlots({ date: formData.preferredDate, serviceId: formData.serviceId || undefined }),
+    enabled: step >= 3 && Boolean(formData.preferredDate),
+    staleTime: 30_000,
+  })
+
   useEffect(() => {
     const contextServiceId = formData.serviceId || requestedService || requestedStyleServiceId
     if (!contextServiceId || !servicesQuery.data || selectedCategory) return
@@ -216,19 +553,24 @@ export function BookingForm() {
     if (cat) setSelectedCategory(cat.id)
   }, [formData.serviceId, requestedService, requestedStyleServiceId, servicesQuery.data, selectedCategory])
 
-  // ── Scroll + focus on every step transition ────────────────────────────────
-  // Brings the step indicator back into view so the user always starts each
-  // step from the top of the form — not mid-page or at the sidebar below.
+  // Clear date/time when service changes — different services have different durations and slot availability
+  const prevServiceIdRef = useRef(formData.serviceId)
+  useEffect(() => {
+    if (prevServiceIdRef.current === formData.serviceId) return
+    prevServiceIdRef.current = formData.serviceId
+    if (formData.preferredDate || formData.preferredTime) {
+      setFormData((cur) => ({ ...cur, preferredDate: '', preferredTime: '' }))
+    }
+  }, [formData.serviceId, formData.preferredDate, formData.preferredTime])
+
   useEffect(() => {
     if (!hasMounted.current) {
       hasMounted.current = true
       return
     }
     scrollTo(formRef.current, 'start')
-    // Focus the first field once the scroll animation has settled (~400ms)
     const t = window.setTimeout(() => {
       if (step === 2) clientNameRef.current?.focus()
-      if (step === 3) preferredDateRef.current?.focus()
     }, 420)
     return () => window.clearTimeout(t)
   }, [step])
@@ -258,8 +600,13 @@ export function BookingForm() {
     }, {})
   }, [servicesQuery.data])
 
-  const appointmentMutation = useMutation({
-    mutationFn: api.createAppointment,
+  const paymentIntentMutation = useMutation({
+    mutationFn: (data: AppointmentRequest) =>
+      api.createPaymentIntent({ ...data, policyAccepted: true }),
+    onSuccess: (data) => {
+      setStripePaymentHold(data)
+      setStep(4)
+    },
     onError: (error) => {
       if (error instanceof ApiRequestError && error.fieldErrors) {
         setErrors(error.fieldErrors as BookingErrors)
@@ -268,11 +615,18 @@ export function BookingForm() {
     },
   })
 
-  // Scroll the confirmation screen into view the moment it appears
+  const confirmMutation = useMutation({
+    mutationFn: ({ appointmentId, intentId }: { appointmentId: string; intentId: string }) =>
+      api.confirmAppointment(appointmentId, intentId),
+    onSuccess: (data) => {
+      if (data.portalUrl) setPortalUrl(data.portalUrl)
+    },
+  })
+
   useEffect(() => {
-    if (!appointmentMutation.isSuccess) return
+    if (!confirmMutation.isSuccess) return
     window.setTimeout(() => scrollTo(confirmRef.current, 'start'), 60)
-  }, [appointmentMutation.isSuccess])
+  }, [confirmMutation.isSuccess])
 
   const update = (field: keyof AppointmentRequest, value: string) => {
     setFormData((cur) => ({ ...cur, [field]: value }))
@@ -292,15 +646,24 @@ export function BookingForm() {
         update('serviceId', '')
       }
     }
-    // Scroll to the service list so the user sees the next sub-step immediately.
     window.setTimeout(() => scrollTo(serviceListRef.current, 'start'), 60)
   }
 
   const handleServiceSelect = (serviceId: string) => {
     update('serviceId', serviceId)
-    // After selecting a service, bring the Continue button into view so the user
-    // knows exactly where to tap next — no hunting, no confusion.
     window.setTimeout(() => scrollTo(continueAreaRef.current, 'nearest'), 60)
+  }
+
+  const handleMonthChange = (dir: -1 | 1) => {
+    setCalendarMonth((prev) => {
+      let { year, month } = prev
+      month += dir
+      if (month > 12) { month = 1; year++ }
+      if (month < 1) { month = 12; year-- }
+      return { year, month }
+    })
+    update('preferredDate', '')
+    update('preferredTime', '')
   }
 
   const hasErrors = Object.keys(errors).length > 0
@@ -328,32 +691,30 @@ export function BookingForm() {
       setStep(2)
     } else if (step === 2 && validateFields(['clientName', 'clientEmail', 'clientPhone'])) {
       setStep(3)
+    } else if (step === 3) {
+      const result = bookingSchema.safeParse(formData)
+      if (!result.success) {
+        setErrors(flattenErrors(result.error))
+        window.setTimeout(() => errorRef.current?.focus(), 0)
+        return
+      }
+      paymentIntentMutation.mutate(result.data)
     }
   }
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (step !== 3) return
-    handleFinalSubmit()
   }
 
-  const handleFinalSubmit = () => {
-    if (step !== 3 || appointmentMutation.isPending) return
-    const result = bookingSchema.safeParse(formData)
-    if (!result.success) {
-      setErrors(flattenErrors(result.error))
-      window.setTimeout(() => errorRef.current?.focus(), 0)
-      return
-    }
-    appointmentMutation.mutate(result.data)
-  }
+  // ── Confirmation Screen ───────────────────────────────────────────────────
 
-  if (appointmentMutation.isSuccess) {
+  if (confirmMutation.isSuccess) {
     const summaryRows = [
       { label: 'Name', value: formData.clientName },
       { label: 'Service', value: selectedService?.name },
       { label: 'Date', value: formatBookingDate(formData.preferredDate) },
       { label: 'Time', value: formatBookingTime(formData.preferredTime) },
+      { label: 'Deposit paid', value: '$30.00' },
       { label: 'Confirmation to', value: formData.clientEmail },
     ]
 
@@ -367,7 +728,6 @@ export function BookingForm() {
         className="overflow-hidden rounded-2xl border border-cream-border shadow-soft"
         aria-live="assertive"
       >
-        {/* Hero band */}
         <div className="bg-cocoa px-8 py-12 text-center">
           <motion.div
             initial={{ scale: 0.3, opacity: 0 }}
@@ -384,7 +744,7 @@ export function BookingForm() {
             transition={{ delay: 0.3, duration: 0.4 }}
             className="font-display mt-6 text-4xl font-semibold text-cream"
           >
-            You&apos;re All Set!
+            Appointment Confirmed!
           </motion.h2>
 
           <motion.p
@@ -393,11 +753,12 @@ export function BookingForm() {
             transition={{ delay: 0.45, duration: 0.4 }}
             className="mx-auto mt-3 max-w-md leading-7 text-cream/75"
           >
-            {appointmentMutation.data.message}
+            Your appointment is confirmed. Your $30 deposit has been received and will be applied
+            toward your final service balance. Please check your email for your appointment details
+            and a link to manage your appointment.
           </motion.p>
         </div>
 
-        {/* Booking summary */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -419,15 +780,19 @@ export function BookingForm() {
           </dl>
         </motion.div>
 
-        {/* Footer */}
         <div className="border-t border-cream-border bg-cream-deep/40 px-8 py-7 text-center">
           <p className="text-sm leading-relaxed text-mocha">
-            We&apos;ll confirm by{' '}
-            <span className="font-semibold text-espresso">text and email within 24 hours.</span>
-            {' '}Questions? Call us anytime.
+            Your deposit will be applied toward your final service balance.{' '}
+            <span className="font-semibold text-espresso">Check your email</span> for a link to view or manage your appointment.
           </p>
-          <div className="mt-5 flex justify-center">
-            <Link to="/" className="btn btn-gold">
+          <div className="mt-5 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            {portalUrl && (
+              <a href={portalUrl} className="btn btn-gold inline-flex items-center gap-2">
+                View My Appointment
+                <ExternalLink size={14} aria-hidden="true" />
+              </a>
+            )}
+            <Link to="/" className="btn btn-outline">
               Back to Home
             </Link>
           </div>
@@ -435,6 +800,12 @@ export function BookingForm() {
       </motion.section>
     )
   }
+
+  // ── Booking Form ─────────────────────────────────────────────────────────
+
+  const servicePrice = selectedService?.startingPrice ?? 0
+  const depositAmount = 3000
+  const remainingBalance = Math.max(0, servicePrice - depositAmount)
 
   return (
     <form
@@ -498,7 +869,7 @@ export function BookingForm() {
           </div>
         )}
 
-        {/* Honeypot — hidden from real users */}
+        {/* Honeypot */}
         <input
           type="text"
           name="company"
@@ -509,11 +880,10 @@ export function BookingForm() {
           autoComplete="off"
         />
 
-        {/* ── Step 1: Service ─────────────────────────────── */}
+        {/* ── Step 1: Service ────────────────────────────────── */}
         {step === 1 && (
           <div className="grid gap-6">
             {!selectedCategory ? (
-              /* ── 1a: Category Cards ── */
               <>
                 <div>
                   <p className="text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha">
@@ -574,7 +944,6 @@ export function BookingForm() {
                 )}
               </>
             ) : (
-              /* ── 1b: Specific Service Selector ── */
               <div
                 ref={serviceListRef}
                 style={{ scrollMarginTop: '100px' }}
@@ -594,7 +963,6 @@ export function BookingForm() {
                     onClick={() => {
                       setSelectedCategory('')
                       update('serviceId', '')
-                      // Scroll back to the top of the form so the category cards are visible
                       window.setTimeout(() => scrollTo(formRef.current, 'start'), 60)
                     }}
                     className="shrink-0 text-xs font-semibold text-gold-dark underline-offset-2 transition-colors hover:text-gold hover:underline"
@@ -674,7 +1042,7 @@ export function BookingForm() {
           </div>
         )}
 
-        {/* ── Step 2: Contact Info ─────────────────────────── */}
+        {/* ── Step 2: Contact Info ────────────────────────────── */}
         {step === 2 && (
           <div className="grid gap-5 md:grid-cols-2">
             <div className="field md:col-span-2">
@@ -728,9 +1096,10 @@ export function BookingForm() {
                 type="tel"
                 inputMode="tel"
                 value={formData.clientPhone}
-                onChange={(e) => update('clientPhone', e.target.value)}
+                onChange={(e) => update('clientPhone', formatPhoneNumber(e.target.value))}
                 autoComplete="tel"
                 placeholder="(317) 000-0000"
+                maxLength={14}
                 aria-invalid={Boolean(errors.clientPhone)}
                 className="mt-2"
               />
@@ -739,132 +1108,249 @@ export function BookingForm() {
           </div>
         )}
 
-        {/* ── Step 3: Date & Time ─────────────────────────── */}
+        {/* ── Step 3: Choose Date & Time ──────────────────────── */}
         {step === 3 && (
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="field">
-              <label
-                htmlFor="preferredDate"
-                className="block text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha"
-              >
-                Preferred Date
-              </label>
-              <input
-                ref={preferredDateRef}
-                id="preferredDate"
-                type="date"
-                value={formData.preferredDate}
-                min={tomorrowInSalonTimeZone()}
-                onChange={(e) => update('preferredDate', e.target.value)}
-                onFocus={() => {
-                  if (!formData.preferredDate) update('preferredDate', tomorrowInSalonTimeZone())
-                }}
-                aria-invalid={Boolean(errors.preferredDate)}
-                className="mt-2"
-              />
-              {errors.preferredDate && <p className="field-error">{errors.preferredDate}</p>}
+          <div className="grid gap-7">
+            {/* Date selection */}
+            <div>
+              <p className="text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha">
+                Choose an Available Date
+              </p>
+              <p className="mt-0.5 text-sm text-mocha/65">
+                Dates marked with a dot have open slots. Tap a date to see available times.
+              </p>
+              <div className="mt-3">
+                <AvailabilityCalendar
+                  year={calendarMonth.year}
+                  month={calendarMonth.month}
+                  selectedDate={formData.preferredDate}
+                  onDateSelect={(date) => {
+                    update('preferredDate', date)
+                    update('preferredTime', '')
+                  }}
+                  dates={monthAvailabilityQuery.data?.dates}
+                  isLoading={monthAvailabilityQuery.isPending}
+                  onMonthChange={handleMonthChange}
+                />
+              </div>
+              {errors.preferredDate && <p className="field-error mt-2">{errors.preferredDate}</p>}
             </div>
-            <div className="field">
-              <label
-                htmlFor="preferredTime"
-                className="block text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha"
-              >
-                Preferred Time
-              </label>
-              <input
-                id="preferredTime"
-                type="time"
-                value={formData.preferredTime}
-                onChange={(e) => update('preferredTime', e.target.value)}
-                onFocus={() => {
-                  if (!formData.preferredTime) update('preferredTime', '10:00')
-                }}
-                aria-invalid={Boolean(errors.preferredTime)}
-                className="mt-2"
-              />
-              {errors.preferredTime && <p className="field-error">{errors.preferredTime}</p>}
-            </div>
-            <div className="field md:col-span-2">
-              <label
-                htmlFor="referralSource"
-                className="block text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha"
-              >
-                How did you hear about us?
-              </label>
-              <select
-                id="referralSource"
-                value={formData.referralSource}
-                onChange={(e) => update('referralSource', e.target.value)}
-                className="mt-2"
-              >
-                {referralOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field md:col-span-2">
-              <label
-                htmlFor="notes"
-                className="block text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha"
-              >
-                Hair Notes or Questions
-              </label>
-              <textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => update('notes', e.target.value)}
-                maxLength={500}
-                placeholder="Share details about the style you have in mind, hair length, or any questions…"
-                className="mt-2"
-              />
-              {errors.notes && <p className="field-error">{errors.notes}</p>}
+
+            {/* Time selection — appears after a date is chosen */}
+            {formData.preferredDate && (
+              <div>
+                <p className="text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha">
+                  Choose an Available Time
+                </p>
+                <p className="mt-0.5 text-sm text-mocha/65">
+                  {formatBookingDate(formData.preferredDate)}
+                </p>
+                <div className="mt-3">
+                  <TimeSlotPicker
+                    slots={dateSlotsQuery.data?.slots}
+                    selectedRawTime={formData.preferredTime}
+                    onSelect={(rawTime) => update('preferredTime', rawTime)}
+                    isLoading={dateSlotsQuery.isPending}
+                  />
+                </div>
+                {errors.preferredTime && <p className="field-error mt-2">{errors.preferredTime}</p>}
+              </div>
+            )}
+
+            {/* Referral + Notes */}
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="field md:col-span-2">
+                <label
+                  htmlFor="referralSource"
+                  className="block text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha"
+                >
+                  How did you hear about us?
+                </label>
+                <select
+                  id="referralSource"
+                  value={formData.referralSource}
+                  onChange={(e) => update('referralSource', e.target.value)}
+                  className="mt-2"
+                >
+                  {referralOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field md:col-span-2">
+                <label
+                  htmlFor="notes"
+                  className="block text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha"
+                >
+                  Hair Notes or Questions
+                </label>
+                <textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => update('notes', e.target.value)}
+                  maxLength={500}
+                  placeholder="Share details about the style you have in mind, hair length, or any questions…"
+                  className="mt-2"
+                />
+                {errors.notes && <p className="field-error">{errors.notes}</p>}
+              </div>
             </div>
           </div>
         )}
 
-        {appointmentMutation.isError && (
+        {/* ── Step 4: Secure Deposit ──────────────────────────── */}
+        {step === 4 && stripePaymentHold && (
+          <div className="space-y-4">
+            {/* Deposit info note */}
+            <div className="rounded-xl border border-gold/30 bg-gold-pale/20 p-4">
+              <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-[0.08em] text-gold-dark">
+                About Your Deposit
+              </p>
+              <p className="text-xs leading-relaxed text-mocha">
+                A $30 deposit is required to secure your appointment. This deposit will be applied toward your final service balance at the salon.
+              </p>
+            </div>
+
+            {/* Payment breakdown */}
+            <div className="rounded-xl border border-cream-border bg-cream-deep/30 p-4">
+              <p className="mb-3 text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha/60">
+                Payment Summary
+              </p>
+              <dl className="divide-y divide-cream-border">
+                {selectedService && (
+                  <div className="flex items-center justify-between py-2">
+                    <dt className="text-xs text-mocha/70">Service</dt>
+                    <dd className="text-xs font-medium text-espresso">{selectedService.name}</dd>
+                  </div>
+                )}
+                {servicePrice > 0 && (
+                  <div className="flex items-center justify-between py-2">
+                    <dt className="text-xs text-mocha/70">Service total (starting at)</dt>
+                    <dd className="text-xs font-medium text-espresso">{formatPrice(servicePrice)}</dd>
+                  </div>
+                )}
+                <div className="flex items-center justify-between rounded-lg bg-gold-pale/10 px-2 py-2.5 -mx-2">
+                  <dt className="text-sm font-semibold text-espresso">Deposit due today</dt>
+                  <dd className="text-sm font-bold text-espresso">$30.00</dd>
+                </div>
+                {remainingBalance > 0 && (
+                  <div className="flex items-center justify-between py-2">
+                    <dt className="text-xs text-mocha/70">Remaining balance at salon</dt>
+                    <dd className="text-xs font-medium text-mocha">{formatPrice(remainingBalance)}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+
+            {/* Date + time recap */}
+            {formData.preferredDate && formData.preferredTime && (
+              <div className="rounded-xl border border-cream-border bg-cream-deep/30 p-4">
+                <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-[0.08em] text-mocha/60">
+                  Your Appointment
+                </p>
+                <p className="text-sm font-medium text-espresso">
+                  {formatBookingDate(formData.preferredDate)} at {formatBookingTime(formData.preferredTime)}
+                </p>
+              </div>
+            )}
+
+            <Elements
+              stripe={stripePromise}
+              options={!isMock ? { clientSecret: stripePaymentHold.clientSecret } : undefined}
+            >
+              <StripePaymentForm
+                appointmentId={stripePaymentHold.appointmentId}
+                policyAccepted={policyAccepted}
+                onPolicyChange={setPolicyAccepted}
+                isConfirming={confirmMutation.isPending}
+                isMock={isMock}
+                onSuccess={(intentId) =>
+                  confirmMutation.mutate({
+                    appointmentId: stripePaymentHold.appointmentId,
+                    intentId,
+                  })
+                }
+              />
+            </Elements>
+
+            {confirmMutation.isError && (
+              <div role="alert" className="rounded-xl border border-error/30 bg-error/8 p-4 text-sm text-error space-y-2">
+                <p className="font-semibold">Your deposit was received, but we could not confirm your appointment.</p>
+                <p>Please contact the salon and share your payment confirmation — we will manually confirm your booking.</p>
+                <button
+                  type="button"
+                  className="mt-1 underline underline-offset-2 text-error/80 hover:text-error"
+                  onClick={() =>
+                    confirmMutation.mutate({
+                      appointmentId: stripePaymentHold!.appointmentId,
+                      intentId: confirmMutation.variables!.intentId,
+                    })
+                  }
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {paymentIntentMutation.isError && (
           <p role="alert" className="mt-6 rounded-xl border border-error/30 bg-error/8 p-4 text-sm text-error">
-            We could not submit your request. Please call the salon or try again.
+            {(paymentIntentMutation.error instanceof ApiRequestError && paymentIntentMutation.error.message)
+              ? paymentIntentMutation.error.message
+              : 'That time slot was taken by another booking just now. Please select a different time.'}
           </p>
         )}
 
-        {/* Action buttons — also serves as the scroll target after service selection */}
-        <div
-          ref={continueAreaRef}
-          style={{ scrollMarginTop: '120px' }}
-          className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"
-        >
-          {step > 1 ? (
+        {/* Action buttons */}
+        {step < 4 && (
+          <div
+            ref={continueAreaRef}
+            style={{ scrollMarginTop: '120px' }}
+            className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"
+          >
+            {step > 1 ? (
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => { setErrors({}); setStep((s) => s - 1) }}
+              >
+                <ArrowLeft size={16} aria-hidden="true" />
+                Back
+              </button>
+            ) : (
+              <span />
+            )}
+            <button
+              key="continue-btn"
+              type="button"
+              className="btn btn-primary"
+              disabled={step === 3 && paymentIntentMutation.isPending}
+              onClick={next}
+            >
+              {step === 3 && paymentIntentMutation.isPending
+                ? 'Checking availability…'
+                : step === 3
+                  ? <>Continue to $30 Deposit <ArrowRight size={16} aria-hidden="true" /></>
+                  : <>Continue <ArrowRight size={16} aria-hidden="true" /></>
+              }
+            </button>
+          </div>
+        )}
+        {step === 4 && (
+          <div className="mt-4">
             <button
               type="button"
-              className="btn btn-outline"
-              onClick={() => { setErrors({}); setStep((s) => s - 1) }}
+              className="btn btn-outline text-sm"
+              onClick={() => { setStep(3); setStripePaymentHold(null); setPolicyAccepted(false) }}
             >
               <ArrowLeft size={16} aria-hidden="true" />
-              Back
+              Back to Choose Your Date
             </button>
-          ) : (
-            <span />
-          )}
-          {step < 3 ? (
-            <button key="continue-btn" type="button" className="btn btn-primary" onClick={next}>
-              Continue
-              <ArrowRight size={16} aria-hidden="true" />
-            </button>
-          ) : (
-            <button
-              key="confirm-btn"
-              type="button"
-              className="btn btn-gold"
-              disabled={appointmentMutation.isPending}
-              onClick={handleFinalSubmit}
-            >
-              {appointmentMutation.isPending ? 'Submitting…' : 'Confirm Appointment Request'}
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </form>
   )

@@ -17,6 +17,7 @@ def test_appointment_validation_normalizes_phone() -> None:
             "clientPhone": "(317) 555-0123",
             "preferredDate": (dt.date.today() + dt.timedelta(days=2)).isoformat(),
             "preferredTime": "10:00",
+            "policyAccepted": True,
             "honeypot": "",
         }
     )
@@ -55,6 +56,7 @@ def test_appointment_validation_uses_salon_timezone_today(monkeypatch) -> None:
             "clientPhone": "3175550123",
             "preferredDate": "2026-05-28",
             "preferredTime": "10:00",
+            "policyAccepted": True,
             "honeypot": "",
         }
     )

@@ -45,6 +45,11 @@ resource "aws_dynamodb_table" "appointments" {
     type = "S"
   }
 
+  attribute {
+    name = "appointmentToken"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "clientEmail-date-index"
     hash_key        = "clientEmail"
@@ -57,6 +62,17 @@ resource "aws_dynamodb_table" "appointments" {
     hash_key        = "statusKey"
     range_key       = "preferredDate"
     projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "token-index"
+    hash_key        = "appointmentToken"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
   }
 
   server_side_encryption {

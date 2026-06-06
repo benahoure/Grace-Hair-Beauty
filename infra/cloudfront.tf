@@ -2,6 +2,34 @@ data "aws_cloudfront_cache_policy" "caching_optimized" {
   name = "Managed-CachingOptimized"
 }
 
+data "aws_cloudfront_cache_policy" "caching_disabled" {
+  name = "Managed-CachingDisabled"
+}
+
+data "aws_cloudfront_origin_request_policy" "all_viewer" {
+  name = "Managed-AllViewerExceptHostHeader"
+}
+
+# Strips the /api prefix before forwarding to API Gateway
+resource "aws_cloudfront_function" "api_rewrite" {
+  name    = "gracehairsbeauty-${var.env}-api-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "Strip /api prefix before forwarding to API Gateway"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+      if (uri.startsWith('/api/')) {
+        request.uri = uri.slice(4);
+      } else if (uri === '/api') {
+        request.uri = '/';
+      }
+      return request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_origin_access_control" "frontend" {
   name                              = "gracehairsbeauty-${var.env}-frontend-oac"
   description                       = "Frontend S3 origin access control"
@@ -46,12 +74,12 @@ resource "aws_cloudfront_response_headers_policy" "frontend_security" {
     content_security_policy {
       content_security_policy = join("; ", [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-eval'",
+        "script-src 'self' 'unsafe-eval' https://js.stripe.com https://*.js.stripe.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data: blob: https://cdn.${var.domain_name} https://maps.gstatic.com",
-        "connect-src 'self' https://api.${var.domain_name} https://cognito-idp.${var.aws_region}.amazonaws.com https://gracehairsbeauty-${var.env}-assets.s3.amazonaws.com",
-        "frame-src https://www.google.com",
+        "img-src 'self' data: blob: https://cdn.${var.domain_name} https://maps.gstatic.com https://*.stripe.com https://*.link.com",
+        "connect-src 'self' https://cognito-idp.${var.aws_region}.amazonaws.com https://gracehairsbeauty-${var.env}-assets.s3.amazonaws.com https://api.stripe.com https://link.com https://*.link.com",
+        "frame-src https://www.google.com https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://link.com https://*.link.com",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
@@ -107,6 +135,39 @@ resource "aws_cloudfront_distribution" "frontend" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
+  # API Gateway origin — raw execute-api URL, never exposed publicly
+  origin {
+    domain_name = replace(aws_apigatewayv2_api.this.api_endpoint, "https://", "")
+    origin_id   = "api-gateway"
+
+    custom_origin_config {
+      http_port                = 80
+      https_port               = 443
+      origin_protocol_policy   = "https-only"
+      origin_ssl_protocols     = ["TLSv1.2"]
+      origin_read_timeout      = 29
+      origin_keepalive_timeout = 5
+    }
+  }
+
+  # /api/* → API Gateway (evaluated before the default S3 behavior)
+  ordered_cache_behavior {
+    path_pattern     = "/api/*"
+    allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "api-gateway"
+    compress         = true
+
+    viewer_protocol_policy   = "redirect-to-https"
+    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.api_rewrite.arn
+    }
+  }
+
   default_cache_behavior {
     allowed_methods            = ["GET", "HEAD", "OPTIONS"]
     cached_methods             = ["GET", "HEAD"]
@@ -125,12 +186,6 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   custom_error_response {
     error_code         = 403
-    response_code      = 200
-    response_page_path = "/index.html"
-  }
-
-  custom_error_response {
-    error_code         = 404
     response_code      = 200
     response_page_path = "/index.html"
   }
