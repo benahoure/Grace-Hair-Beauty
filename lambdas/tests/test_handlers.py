@@ -66,7 +66,12 @@ def test_appointment_service_persists_portfolio_style_id(monkeypatch) -> None:
     monkeypatch.setattr(
         service,
         "get_item",
-        lambda *args, **kwargs: {"serviceId": "svc-knotless-braids", "name": "Knotless Braids", "active": True, "startingPrice": 15000},
+        lambda *args, **kwargs: {
+            "serviceId": "svc-knotless-braids",
+            "name": "Knotless Braids",
+            "active": True,
+            "startingPrice": 15000,
+        },
     )
     monkeypatch.setattr(service, "put_item", lambda table, item: writes.append((table, item)))
     monkeypatch.setattr(service, "_slot_is_available", lambda *args, **kwargs: True)

@@ -7,12 +7,11 @@ from boto3.dynamodb.conditions import Attr
 from appointments.models import (
     DEFAULT_DURATION_MINUTES,
     DEPOSIT_AMOUNT_CENTS,
-    SALON_TZ,
     RescheduleRequest,
     is_within_24hrs,
 )
 from common.config import get_config
-from common.dynamo import get_item, put_item, query_index, scan_items, update_item
+from common.dynamo import put_item, query_index, scan_items, update_item
 from common.email_layout import details_table as _details_table
 from common.email_layout import email_layout as _email_layout
 from common.errors import NotFoundError
@@ -159,7 +158,9 @@ def portal_reschedule(token: str, req: RescheduleRequest) -> dict:
         raise ValueError("The new date and time must be different from the current appointment.")
 
     duration = int(appt.get("serviceDurationMinutes", DEFAULT_DURATION_MINUTES))
-    if not _slot_is_available_for_reschedule(new_date, new_time, duration_minutes=duration, exclude_id=appt["appointmentId"]):
+    if not _slot_is_available_for_reschedule(
+        new_date, new_time, duration_minutes=duration, exclude_id=appt["appointmentId"]
+    ):
         raise ValueError("That time slot is not available. Please choose a different date or time.")
 
     now = utc_now()
@@ -212,7 +213,8 @@ def portal_reschedule(token: str, req: RescheduleRequest) -> dict:
     )
     notify_admin(
         f"Client rescheduled: {service_name}",
-        f"{name} rescheduled from {_format_date(old_date)} {_format_time(old_time)} to {_format_date(new_date)} {_format_time(new_time)}.",
+        f"{name} rescheduled from {_format_date(old_date)} {_format_time(old_time)}"
+        f" to {_format_date(new_date)} {_format_time(new_time)}.",
     )
 
     return _safe_appointment({**appt, **updated})
@@ -266,7 +268,7 @@ def portal_cancel(token: str) -> dict:
             },
         )
     except NotFoundError:
-        raise NotFoundError("Appointment not found.")
+        raise NotFoundError("Appointment not found.") from None
 
     try:
         create_refund(charge_id, idempotency_key=f"{appointment_id}-client-cancel")
@@ -279,8 +281,8 @@ def portal_cancel(token: str) -> dict:
                 {"appointmentId": appointment_id},
                 {"status": "cancelled", "depositStatus": "paid", "refundStatus": "none", "updatedAt": utc_now()},
             )
-        except Exception:
-            pass
+        except Exception:  # noqa: S110
+            logger.warning("Rollback update failed after Stripe refund error", extra={"appointmentId": appointment_id})
         raise ValueError("Refund processing failed. Please contact the salon directly.") from exc
 
     put_item(

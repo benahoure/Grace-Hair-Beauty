@@ -24,12 +24,11 @@ from common.dynamo import (
 )
 from common.errors import ForbiddenError, NotFoundError
 from common.http import method, parse_json_body, path, path_parameter, query_params, validation_errors
-from appointments.models import RescheduleRequest, is_within_24hrs
 from common.ids import new_id, ttl_days, utc_now
-from common.stripe_client import create_refund
 from common.logger import logger, safe_extra
 from common.response import bad_request, created, forbidden, internal_error, not_found, ok, options
 from common.security import decrypt_pii, require_admin, validate_cdn_url, validate_cdn_url_any
+from common.stripe_client import create_refund
 from portfolio.models import PortfolioPatch, PortfolioWrite
 from reviews.models import ReviewPatch, ReviewWrite
 from services.models import ServicePatch, ServiceWrite
@@ -79,7 +78,9 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             return get_appointments(event)
         if path_parameter(event, "appointmentId") and request_method == "PATCH":
             return update_appointment(event, admin_user_id)
-        if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith("/cancel-refund"):
+        if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith(
+            "/cancel-refund"
+        ):
             return admin_cancel_refund(event, admin_user_id)
         if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith("/reschedule"):
             return admin_reschedule(event, admin_user_id)
@@ -454,7 +455,12 @@ def admin_override(event: dict, admin_user_id: str) -> dict:
         updated = update_item(
             get_config().table_appointments,
             {"appointmentId": appointment_id},
-            {"adminOverrideReason": body.reason, "adminOverrideAt": now, "adminOverrideBy": admin_user_id, "updatedAt": now},
+            {
+                "adminOverrideReason": body.reason,
+                "adminOverrideAt": now,
+                "adminOverrideBy": admin_user_id,
+                "updatedAt": now,
+            },
         )
     except NotFoundError:
         return not_found("Appointment not found.")
@@ -703,9 +709,10 @@ def patch_contact_message(event: dict, admin_user_id: str) -> dict:
 
 
 def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
+    from html import escape
+
     from common.email_layout import email_layout
     from common.ses_client import send_email
-    from html import escape
 
     message_id = resource_id(event, "messageId")
     body = parse_json_body(event)
@@ -737,7 +744,8 @@ def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
     reply_block = f"""
       <tr>
         <td style="padding: 14px 32px 30px 32px;">
-          <p style="margin: 0 0 18px 0; color: #2C1810; font: 400 15px/1.7 Arial, sans-serif; white-space: pre-wrap;">{escape(reply_text)}</p>
+          <p style="margin: 0 0 18px 0; color: #2C1810; font: 400 15px/1.7 Arial, sans-serif;
+            white-space: pre-wrap;">{escape(reply_text)}</p>
           <hr style="border: none; border-top: 1px solid #E4D9CE; margin: 20px 0;" />
           <p style="margin: 0; color: #A07850; font: 400 13px/1.6 Arial, sans-serif;">
             Your original message:<br/>
@@ -747,7 +755,7 @@ def reply_to_contact_message(event: dict, admin_user_id: str) -> dict:
       </tr>
     """
     html_body = email_layout(
-        preheader=f"Grace Hair Beauty replied to your inquiry.",
+        preheader="Grace Hair Beauty replied to your inquiry.",
         title="Reply from Grace Hair Beauty",
         intro=f"Hi {client_name}, here is our reply to your recent inquiry.",
         content=reply_block,

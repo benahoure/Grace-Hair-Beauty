@@ -46,7 +46,9 @@ class BusinessSettingsPatch(HtmlStrippingModelMixin, BaseModel):
     bookingNotice: str | None = Field(default=None, max_length=300)
     founderImageUrl: str | None = None
     contactImageUrl: str | None = None
-    blockedDates: list[str] | None = Field(default=None, description="ISO dates (YYYY-MM-DD) the salon is closed for one-off reasons")
+    blockedDates: list[str] | None = Field(
+        default=None, description="ISO dates (YYYY-MM-DD) the salon is closed for one-off reasons"
+    )
 
     @field_validator("phone")
     @classmethod

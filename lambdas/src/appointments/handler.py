@@ -15,7 +15,8 @@ from common.response import bad_request, conflict, created, internal_error, not_
 
 def _client_ip(event: dict) -> str | None:
     ctx = event.get("requestContext", {})
-    return ctx.get("http", {}).get("sourceIp") or event.get("headers", {}).get("x-forwarded-for", "").split(",")[0].strip() or None
+    forwarded = event.get("headers", {}).get("x-forwarded-for", "").split(",")[0].strip()
+    return ctx.get("http", {}).get("sourceIp") or forwarded or None
 
 
 def _user_agent(event: dict) -> str | None:

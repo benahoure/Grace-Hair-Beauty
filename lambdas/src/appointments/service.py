@@ -8,10 +8,8 @@ from appointments.models import (
     DEFAULT_DURATION_MINUTES,
     DEPOSIT_AMOUNT_CENTS,
     POLICY_VERSION,
-    SALON_TZ,
     ConfirmAppointmentRequest,
     PaymentIntentRequest,
-    is_within_24hrs,
 )
 from common.config import get_config
 from common.dynamo import get_item, put_item, scan_items, update_item

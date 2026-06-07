@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import stripe
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
@@ -141,6 +139,7 @@ def _mark_refund_failed(appointment_id: str, failure_reason: str) -> None:
 
 def _mark_refund_failed_by_charge(charge_id: str, failure_reason: str) -> None:
     from boto3.dynamodb.conditions import Attr
+
     from common.dynamo import scan_items
 
     config = get_config()
@@ -197,6 +196,7 @@ def _finalize_refund(appointment_id: str) -> None:
 def _finalize_refund_by_charge(charge_id: str) -> None:
     """Fallback: look up appointment by stripeChargeId when appointmentId is not in refund metadata."""
     from boto3.dynamodb.conditions import Attr
+
     from common.dynamo import scan_items
 
     config = get_config()
