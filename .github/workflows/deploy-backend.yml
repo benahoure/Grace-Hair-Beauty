@@ -1,6 +1,11 @@
 name: Deploy Backend
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "lambdas/**"
+      - ".github/workflows/deploy-backend.yml"
   push:
     branches: [main]
     paths:
