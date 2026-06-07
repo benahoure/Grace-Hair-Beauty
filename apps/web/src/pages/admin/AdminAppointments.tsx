@@ -812,8 +812,8 @@ export function AdminAppointments() {
     },
   })
 
-  const allApts = calQuery.data?.appointments ?? []
-  const listApts = listQuery.data?.appointments ?? []
+  const allApts = useMemo(() => calQuery.data?.appointments ?? [], [calQuery.data])
+  const listApts = useMemo(() => listQuery.data?.appointments ?? [], [listQuery.data])
 
   // Appointments for the selected calendar date
   const dayApts = useMemo(
