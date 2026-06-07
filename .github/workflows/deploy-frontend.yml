@@ -18,6 +18,7 @@ on:
 env:
   AWS_REGION: us-east-1
   NODE_VERSION: "22"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-and-deploy-dev:

@@ -34,6 +34,9 @@ def lambda_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_ALERT_EMAIL", "admin@example.test")
     monkeypatch.delenv("KMS_KEY_ID", raising=False)
     monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("ZOHO_SMTP_USER_SSM", "/gracehairsbeauty/test/zoho-smtp-user")
+    monkeypatch.setenv("ZOHO_SMTP_PASSWORD_SSM", "/gracehairsbeauty/test/zoho-smtp-password")
+    monkeypatch.setenv("ZOHO_ADMIN_EMAILS_SSM", "/gracehairsbeauty/test/zoho-admin-emails")
     os.environ.setdefault("POWERTOOLS_SERVICE_NAME", "grace-hair-beauty-test")
 
 
