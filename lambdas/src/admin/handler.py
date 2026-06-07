@@ -326,7 +326,7 @@ def admin_cancel_refund(event: dict, admin_user_id: str) -> dict:
         final_deposit_status = "refund_pending"
     else:
         # No charge on record — cancel without refund
-        final_deposit_status = deposit_status
+        final_deposit_status = deposit_status or ""
 
     updated = update_item(
         get_config().table_appointments,

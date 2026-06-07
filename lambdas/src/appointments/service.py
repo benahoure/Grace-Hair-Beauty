@@ -104,7 +104,7 @@ def _confirmation_email_html(
     config = get_config()
     portal_url = f"{config.allowed_origin}/appointment/{token}"
     remaining = _remaining_balance_cents(service_price_cents)
-    rows = [
+    rows: list[tuple[str, str | None]] = [
         ("Service", service_name),
         ("Date", _format_date(date)),
         ("Time", _format_time(time)),
@@ -338,8 +338,8 @@ def confirm_appointment(appointment_id: str, req: ConfirmAppointmentRequest) -> 
         },
     )
 
-    client_email = decrypt_pii(existing.get("clientEmail", ""))
-    client_phone = decrypt_pii(existing.get("clientPhone", ""))
+    client_email = decrypt_pii(existing.get("clientEmail", "")) or ""
+    client_phone = decrypt_pii(existing.get("clientPhone", "")) or ""
     token = existing.get("appointmentToken", "")
     name = existing["clientName"]
     service_name = existing["serviceName"]
@@ -417,8 +417,8 @@ def confirm_appointment_from_webhook(appointment_id: str, charge_id: str | None,
     service_name = existing["serviceName"]
     date_str = existing["preferredDate"]
     time_str = existing["preferredTime"]
-    client_email = decrypt_pii(existing.get("clientEmail", ""))
-    client_phone = decrypt_pii(existing.get("clientPhone", ""))
+    client_email = decrypt_pii(existing.get("clientEmail", "")) or ""
+    client_phone = decrypt_pii(existing.get("clientPhone", "")) or ""
     svc_price = int(existing.get("servicePrice", 0))
 
     best_effort_send_email(

@@ -199,7 +199,7 @@ def portal_reschedule(token: str, req: RescheduleRequest) -> dict:
 
     name = appt["clientName"]
     service_name = appt["serviceName"]
-    client_email = decrypt_pii(appt.get("clientEmail", ""))
+    client_email = decrypt_pii(appt.get("clientEmail", "")) or ""
 
     _send_reschedule_confirmation(
         client_email=client_email,
@@ -301,7 +301,7 @@ def portal_cancel(token: str) -> dict:
 
     name = appt["clientName"]
     service_name = appt["serviceName"]
-    client_email = decrypt_pii(appt.get("clientEmail", ""))
+    client_email = decrypt_pii(appt.get("clientEmail", "")) or ""
 
     _send_cancel_confirmation(client_email, name, service_name, appt["preferredDate"], appt["preferredTime"])
     notify_admin(
