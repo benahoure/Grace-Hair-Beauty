@@ -1,4 +1,5 @@
 resource "aws_wafv2_web_acl" "this" {
+  count    = var.enable_waf ? 1 : 0
   provider = aws.us_east_1
   name     = "gracehairsbeauty-${var.env}-waf"
   scope    = "CLOUDFRONT"
@@ -111,6 +112,7 @@ resource "aws_wafv2_web_acl" "this" {
 }
 
 resource "aws_cloudwatch_log_group" "waf" {
+  count             = var.enable_waf ? 1 : 0
   provider          = aws.us_east_1
   name              = "aws-waf-logs-gracehairsbeauty-${var.env}"
   kms_key_id        = aws_kms_key.data.arn
@@ -118,7 +120,8 @@ resource "aws_cloudwatch_log_group" "waf" {
 }
 
 resource "aws_wafv2_web_acl_logging_configuration" "this" {
+  count                   = var.enable_waf ? 1 : 0
   provider                = aws.us_east_1
-  resource_arn            = aws_wafv2_web_acl.this.arn
-  log_destination_configs = [aws_cloudwatch_log_group.waf.arn]
+  resource_arn            = aws_wafv2_web_acl.this[0].arn
+  log_destination_configs = [aws_cloudwatch_log_group.waf[0].arn]
 }
