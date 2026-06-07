@@ -46,14 +46,22 @@ variable "log_retention_days" {
   default     = 30
 }
 
+variable "enable_waf" {
+  description = "Whether to create the WAF Web ACL. Enabled in prod only — dev skips WAF to reduce cost."
+  type        = bool
+  default     = false
+}
+
 variable "waf_rate_limit" {
-  description = "WAF rate limit per five-minute window per IP."
+  description = "WAF rate limit per five-minute window per IP. Only used when enable_waf = true."
   type        = number
+  default     = 1000
 }
 
 variable "waf_common_override_count" {
-  description = "Whether the WAF Common Rule Set should run in count mode instead of block mode."
+  description = "Whether the WAF Common Rule Set should run in count mode instead of block mode. Only used when enable_waf = true."
   type        = bool
+  default     = false
 }
 
 variable "log_level" {

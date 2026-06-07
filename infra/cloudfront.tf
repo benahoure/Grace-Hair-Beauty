@@ -123,11 +123,11 @@ resource "aws_cloudfront_response_headers_policy" "assets_cors" {
 resource "aws_cloudfront_distribution" "frontend" {
   #checkov:skip=CKV_AWS_310:Single S3 origin is intentional; origin failover would add unused buckets and operational overhead
   #checkov:skip=CKV_AWS_374:Geo restriction is intentionally disabled so all clients can reach the public salon site
-  #checkov:skip=CKV2_AWS_47:Attached WAF includes AWSManagedRulesCommonRuleSet and AWSManagedRulesKnownBadInputsRuleSet for Log4j protection
+  #checkov:skip=CKV2_AWS_47:WAF is prod-only (enable_waf = true); dev intentionally skips WAF to reduce cost
   aliases             = [var.domain_name]
   enabled             = true
   default_root_object = "index.html"
-  web_acl_id          = aws_wafv2_web_acl.this.arn
+  web_acl_id          = var.enable_waf ? aws_wafv2_web_acl.this[0].arn : null
 
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
@@ -206,11 +206,11 @@ resource "aws_cloudfront_distribution" "frontend" {
 resource "aws_cloudfront_distribution" "assets" {
   #checkov:skip=CKV_AWS_310:Single S3 origin is intentional; origin failover would add unused buckets and operational overhead
   #checkov:skip=CKV_AWS_374:Geo restriction is intentionally disabled so clients can load public portfolio assets
-  #checkov:skip=CKV2_AWS_47:Attached WAF includes AWSManagedRulesCommonRuleSet and AWSManagedRulesKnownBadInputsRuleSet for Log4j protection
+  #checkov:skip=CKV2_AWS_47:WAF is prod-only (enable_waf = true); dev intentionally skips WAF to reduce cost
   aliases             = ["cdn.${var.domain_name}"]
   enabled             = true
   default_root_object = "index.html"
-  web_acl_id          = aws_wafv2_web_acl.this.arn
+  web_acl_id          = var.enable_waf ? aws_wafv2_web_acl.this[0].arn : null
 
   origin {
     domain_name              = aws_s3_bucket.assets.bucket_regional_domain_name

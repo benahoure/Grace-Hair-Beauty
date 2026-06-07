@@ -1,4 +1,6 @@
 env                       = "prod"
+create_oidc_provider      = false
+enable_waf                = true
 domain_name               = "gracehairsbeauty.com"
 hosted_zone_name          = "gracehairsbeauty.com"
 lambda_memory_public      = 512
