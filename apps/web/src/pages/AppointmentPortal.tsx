@@ -6,7 +6,6 @@ import { Link, useParams } from 'react-router-dom'
 import { PageMeta } from '../components/seo/PageMeta'
 import { api, ApiRequestError } from '../lib/api'
 import { formatPhone, formatPrice, shortDate } from '../lib/format'
-import type { PortalAppointment } from '../types'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 

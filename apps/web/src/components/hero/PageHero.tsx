@@ -109,7 +109,7 @@ export function PageHero({
     const dy = e.clientY - pointerStart.current.y
     pointerStart.current = null
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
-      dx < 0 ? next() : prev()
+      if (dx < 0) next(); else prev()
     }
   }, [next, prev])
 
