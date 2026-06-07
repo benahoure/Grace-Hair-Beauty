@@ -1,17 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, List } from 'lucide-react'
+import { CalendarDays, ChevronDown, List } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { PageMeta } from '../../components/seo/PageMeta'
-import { api } from '../../lib/api'
-import { formatPhone, shortDate } from '../../lib/format'
-import type { AdminAppointment } from '../../types'
+import { ApiRequestError, api } from '../../lib/api'
+import { formatPhone, formatPrice, shortDate } from '../../lib/format'
+import type { AdminAppointment, DepositStatus } from '../../types'
 import { AdminPageShell } from './AdminDashboard'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const STATUS_TABS = ['pending', 'confirmed', 'cancelled', 'completed', 'all'] as const
+const STATUS_TABS = ['confirmed', 'pending', 'completed', 'cancelled', 'all'] as const
 type StatusFilter = typeof STATUS_TABS[number]
+
+const TAB_LABEL: Record<StatusFilter, string> = {
+  confirmed:  'Upcoming',
+  pending:    'Awaiting Review',
+  completed:  'Completed',
+  cancelled:  'Cancelled',
+  all:        'All',
+}
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; dot: string }> = {
   pending:   { bg: 'rgba(251,191,36,0.12)',  color: '#92400e',  dot: '#F59E0B' },
@@ -285,7 +293,33 @@ function AppointmentCalendar({
   )
 }
 
+// ─── deposit badge ─────────────────────────────────────────────────────────────
+
+const DEPOSIT_STYLE: Record<DepositStatus, { label: string; bg: string; color: string }> = {
+  paid:               { label: 'Deposit paid',        bg: 'rgba(34,197,94,0.10)',  color: '#166534' },
+  refund_pending:     { label: 'Refund processing',   bg: 'rgba(251,191,36,0.12)', color: '#92400e' },
+  refunded:           { label: 'Deposit refunded',    bg: 'rgba(59,130,246,0.12)', color: '#1e40af' },
+  forfeited:          { label: 'Deposit forfeited',   bg: 'rgba(239,68,68,0.12)', color: '#991b1b' },
+  transferred:        { label: 'Deposit transferred', bg: 'rgba(34,197,94,0.10)',  color: '#166534' },
+  applied_to_balance: { label: 'Applied to balance',  bg: 'rgba(34,197,94,0.10)',  color: '#166534' },
+}
+
+function DepositBadge({ status, amount }: { status: DepositStatus; amount?: number }) {
+  const s = DEPOSIT_STYLE[status]
+  const amtLabel = status === 'paid' && amount ? ` — ${formatPrice(amount)}` : ''
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.62rem] font-semibold"
+      style={{ background: s.bg, color: s.color }}
+    >
+      {s.label}{amtLabel}
+    </span>
+  )
+}
+
 // ─── appointment card ─────────────────────────────────────────────────────────
+
+type AdminActionType = 'cancel-refund' | 'reschedule' | 'refund' | 'late-cancel' | 'no-show' | 'override'
 
 function AppointmentCard({
   apt,
@@ -298,8 +332,59 @@ function AppointmentCard({
   isUpdating: boolean
   compact?: boolean
 }) {
+  const queryClient = useQueryClient()
   const [pendingAction, setPendingAction] = useState<'confirmed' | 'cancelled' | null>(null)
   const [note, setNote] = useState('')
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false)
+  const [adminAction, setAdminAction] = useState<AdminActionType | null>(null)
+  const [actionNote, setActionNote] = useState('')
+  const [rescheduleDate, setRescheduleDate] = useState(apt.preferredDate)
+  const [rescheduleTime, setRescheduleTime] = useState(apt.preferredTime)
+  const [adminError, setAdminError] = useState<string | null>(null)
+
+  function invalidateAll() {
+    queryClient.invalidateQueries({ queryKey: ['admin-appointments'] })
+    queryClient.invalidateQueries({ queryKey: ['admin-appointments-all'] })
+  }
+
+  function resetAdminPanel() {
+    setAdminAction(null)
+    setActionNote('')
+    setRescheduleDate(apt.preferredDate)
+    setRescheduleTime(apt.preferredTime)
+    setAdminError(null)
+  }
+
+  const adminMutation = useMutation({
+    mutationFn: async (type: AdminActionType) => {
+      switch (type) {
+        case 'cancel-refund': return api.adminCancelRefund(apt.appointmentId)
+        case 'reschedule':    return api.adminReschedule(apt.appointmentId, {
+          preferredDate: rescheduleDate,
+          preferredTime: rescheduleTime,
+          reason: actionNote.trim() || undefined,
+        })
+        case 'refund':        return api.adminRefundDeposit(apt.appointmentId)
+        case 'late-cancel':   return api.adminForfeitDeposit(apt.appointmentId, {
+          action: 'late_cancel',
+          reason: actionNote.trim() || undefined,
+        })
+        case 'no-show':       return api.adminForfeitDeposit(apt.appointmentId, {
+          action: 'no_show',
+          reason: actionNote.trim() || undefined,
+        })
+        case 'override':      return api.adminOverride(apt.appointmentId, actionNote.trim())
+      }
+    },
+    onSuccess: () => {
+      invalidateAll()
+      resetAdminPanel()
+      setAdminPanelOpen(false)
+    },
+    onError: (err) => {
+      setAdminError(err instanceof ApiRequestError ? err.message : 'Action failed. Please try again.')
+    },
+  })
 
   function submitWithNote() {
     if (!pendingAction) return
@@ -307,6 +392,8 @@ function AppointmentCard({
     setPendingAction(null)
     setNote('')
   }
+
+  const isActiveStatus = apt.status === 'pending' || apt.status === 'confirmed'
 
   return (
     <div className="rounded-xl border border-cream-border bg-paper shadow-soft">
@@ -316,6 +403,18 @@ function AppointmentCard({
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold text-espresso">{apt.clientName}</p>
               <StatusBadge status={apt.status} />
+              {apt.depositStatus && (
+                <DepositBadge status={apt.depositStatus} amount={apt.depositAmount} />
+              )}
+              {apt.refundStatus === 'failed' && (
+                <span
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.62rem] font-semibold"
+                  style={{ background: 'rgba(239,68,68,0.14)', color: '#991b1b' }}
+                  title={apt.refundFailureReason ?? 'Refund failed — action required'}
+                >
+                  ⚠ Refund failed
+                </span>
+              )}
             </div>
             <p className="mt-0.5 text-sm font-medium text-mocha">{apt.serviceName}</p>
             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-mocha/60">
@@ -326,7 +425,16 @@ function AppointmentCard({
               {apt.referralSource && <span>via {apt.referralSource}</span>}
             </div>
             {apt.notes && <p className="mt-1.5 text-xs italic text-mocha/50">"{apt.notes}"</p>}
-            {apt.adminNote && <p className="mt-1 text-xs font-medium text-gold-dark">Note: {apt.adminNote}</p>}
+            {(apt.adminNote || apt.adminNotes) && (
+              <p className="mt-1 text-xs font-medium text-gold-dark">Note: {apt.adminNote ?? apt.adminNotes}</p>
+            )}
+            {apt.rescheduledAt && (
+              <p className="mt-1 text-[0.62rem] text-mocha/40">
+                Rescheduled {shortDate(apt.rescheduledAt)}
+                {apt.rescheduledBy === 'admin' ? ' by admin' : apt.rescheduledBy === 'client' ? ' by client' : ''}
+                {apt.rescheduledFrom ? ` (was ${apt.rescheduledFrom})` : ''}
+              </p>
+            )}
             {!compact && <p className="mt-1.5 text-[0.62rem] text-mocha/35">Received {shortDate(apt.createdAt)}</p>}
           </div>
 
@@ -347,7 +455,7 @@ function AppointmentCard({
                 >Cancel</button>
               </>
             )}
-            {apt.status === 'confirmed' && (
+            {apt.status === 'confirmed' && !pendingAction && (
               <button
                 type="button" disabled={isUpdating}
                 onClick={() => onUpdate('completed')}
@@ -359,6 +467,7 @@ function AppointmentCard({
         </div>
       </div>
 
+      {/* Basic action note panel */}
       {pendingAction && (
         <div
           className="border-t px-4 pb-4 pt-3"
@@ -390,6 +499,281 @@ function AppointmentCard({
           </div>
         </div>
       )}
+
+      {/* Admin advanced actions toggle */}
+      {!pendingAction && (
+        <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+          <button
+            type="button"
+            onClick={() => { setAdminPanelOpen((o) => !o); resetAdminPanel() }}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-[0.65rem] font-semibold uppercase tracking-wide text-mocha/50 transition-colors hover:bg-cream-deep/40 hover:text-mocha/70"
+          >
+            Admin Actions
+            <ChevronDown
+              size={13}
+              className="transition-transform"
+              style={{ transform: adminPanelOpen ? 'rotate(180deg)' : undefined }}
+            />
+          </button>
+
+          {adminPanelOpen && (
+            <div className="px-4 pb-4 pt-1 space-y-3" style={{ background: 'rgba(0,0,0,0.012)' }}>
+              {/* Action button grid */}
+              {!adminAction && (
+                <div className="flex flex-wrap gap-2">
+                  {isActiveStatus && apt.depositStatus === 'paid' && (
+                    <AdminActionBtn
+                      label="Cancel by Salon + Refund"
+                      color="#991b1b"
+                      bg="rgba(239,68,68,0.10)"
+                      onClick={() => setAdminAction('cancel-refund')}
+                    />
+                  )}
+                  {isActiveStatus && (
+                    <AdminActionBtn
+                      label="Reschedule"
+                      color="#1e40af"
+                      bg="rgba(59,130,246,0.10)"
+                      onClick={() => setAdminAction('reschedule')}
+                    />
+                  )}
+                  {apt.depositStatus === 'paid' && (
+                    <AdminActionBtn
+                      label="Refund Manually"
+                      color="#92400e"
+                      bg="rgba(251,191,36,0.12)"
+                      onClick={() => setAdminAction('refund')}
+                    />
+                  )}
+                  {isActiveStatus && (
+                    <AdminActionBtn
+                      label="Mark Late Cancel + Forfeit"
+                      color="#991b1b"
+                      bg="rgba(239,68,68,0.08)"
+                      onClick={() => setAdminAction('late-cancel')}
+                    />
+                  )}
+                  {isActiveStatus && (
+                    <AdminActionBtn
+                      label="Mark No-Show + Forfeit"
+                      color="#991b1b"
+                      bg="rgba(239,68,68,0.08)"
+                      onClick={() => setAdminAction('no-show')}
+                    />
+                  )}
+                  <AdminActionBtn
+                    label="Override With Reason"
+                    color="#374151"
+                    bg="rgba(107,114,128,0.10)"
+                    onClick={() => setAdminAction('override')}
+                  />
+                </div>
+              )}
+
+              {/* Inline action forms */}
+              {adminAction === 'cancel-refund' && (
+                <AdminActionForm
+                  title="Cancel by Salon + Full Refund"
+                  description="This will cancel the appointment and issue a full $30.00 refund to the client's card."
+                  confirmLabel="Cancel & Refund"
+                  confirmColor="#991b1b"
+                  requireNote={false}
+                  note={actionNote}
+                  onNoteChange={setActionNote}
+                  onConfirm={() => adminMutation.mutate('cancel-refund')}
+                  onBack={resetAdminPanel}
+                  isPending={adminMutation.isPending}
+                  error={adminError}
+                />
+              )}
+
+              {adminAction === 'reschedule' && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-mocha/70">Reschedule by Admin</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[0.6rem] font-bold uppercase tracking-wide text-mocha/50">New Date</label>
+                      <input
+                        type="date" value={rescheduleDate}
+                        onChange={(e) => setRescheduleDate(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-cream-border bg-white px-2.5 py-1.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[0.6rem] font-bold uppercase tracking-wide text-mocha/50">New Time</label>
+                      <input
+                        type="time" value={rescheduleTime}
+                        onChange={(e) => setRescheduleTime(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-cream-border bg-white px-2.5 py-1.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[0.6rem] font-bold uppercase tracking-wide text-mocha/50">Reason (optional)</label>
+                    <input
+                      type="text" value={actionNote}
+                      onChange={(e) => setActionNote(e.target.value)}
+                      placeholder="e.g. Stylist unavailable — moved to next availability"
+                      className="mt-1 w-full rounded-lg border border-cream-border bg-white px-2.5 py-1.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+                    />
+                  </div>
+                  {adminError && <p className="text-xs text-error">{adminError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={adminMutation.isPending || (!rescheduleDate || !rescheduleTime)}
+                      onClick={() => adminMutation.mutate('reschedule')}
+                      className="rounded-lg px-4 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                      style={{ background: '#1e40af' }}
+                    >
+                      {adminMutation.isPending ? 'Saving…' : 'Confirm Reschedule'}
+                    </button>
+                    <button type="button" onClick={resetAdminPanel} className="rounded-lg px-4 py-1.5 text-xs font-semibold text-mocha/60 hover:text-mocha">
+                      Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {adminAction === 'refund' && (
+                <AdminActionForm
+                  title="Refund Deposit Manually"
+                  description="Issue a full $30.00 refund to the client's original payment method."
+                  confirmLabel="Issue Refund"
+                  confirmColor="#92400e"
+                  requireNote={false}
+                  note={actionNote}
+                  onNoteChange={setActionNote}
+                  onConfirm={() => adminMutation.mutate('refund')}
+                  onBack={resetAdminPanel}
+                  isPending={adminMutation.isPending}
+                  error={adminError}
+                />
+              )}
+
+              {adminAction === 'late-cancel' && (
+                <AdminActionForm
+                  title="Mark Late Cancel + Forfeit Deposit"
+                  description="Records this as a late cancellation. The $30.00 deposit will be forfeited."
+                  confirmLabel="Mark Late Cancel + Forfeit"
+                  confirmColor="#991b1b"
+                  requireNote={false}
+                  note={actionNote}
+                  onNoteChange={setActionNote}
+                  notePlaceholder="Reason (optional)"
+                  onConfirm={() => adminMutation.mutate('late-cancel')}
+                  onBack={resetAdminPanel}
+                  isPending={adminMutation.isPending}
+                  error={adminError}
+                />
+              )}
+
+              {adminAction === 'no-show' && (
+                <AdminActionForm
+                  title="Mark No-Show + Forfeit Deposit"
+                  description="Records this as a no-show. The $30.00 deposit will be forfeited."
+                  confirmLabel="Mark No-Show + Forfeit"
+                  confirmColor="#991b1b"
+                  requireNote={false}
+                  note={actionNote}
+                  onNoteChange={setActionNote}
+                  notePlaceholder="Reason (optional)"
+                  onConfirm={() => adminMutation.mutate('no-show')}
+                  onBack={resetAdminPanel}
+                  isPending={adminMutation.isPending}
+                  error={adminError}
+                />
+              )}
+
+              {adminAction === 'override' && (
+                <AdminActionForm
+                  title="Override With Reason"
+                  description="Records an admin override note without changing the appointment status or deposit."
+                  confirmLabel="Save Override"
+                  confirmColor="#374151"
+                  requireNote
+                  note={actionNote}
+                  onNoteChange={setActionNote}
+                  notePlaceholder="Reason for override (required)"
+                  onConfirm={() => adminMutation.mutate('override')}
+                  onBack={resetAdminPanel}
+                  isPending={adminMutation.isPending}
+                  error={adminError}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AdminActionBtn({
+  label, color, bg, onClick,
+}: {
+  label: string; color: string; bg: string; onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-80"
+      style={{ background: bg, color }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function AdminActionForm({
+  title, description, confirmLabel, confirmColor, requireNote,
+  note, onNoteChange, notePlaceholder, onConfirm, onBack, isPending, error,
+}: {
+  title: string
+  description: string
+  confirmLabel: string
+  confirmColor: string
+  requireNote: boolean
+  note: string
+  onNoteChange: (v: string) => void
+  notePlaceholder?: string
+  onConfirm: () => void
+  onBack: () => void
+  isPending: boolean
+  error: string | null
+}) {
+  return (
+    <div className="space-y-2.5">
+      <div>
+        <p className="text-xs font-semibold" style={{ color: confirmColor }}>{title}</p>
+        <p className="text-[0.68rem] text-mocha/60 mt-0.5">{description}</p>
+      </div>
+      <input
+        type="text"
+        value={note}
+        onChange={(e) => onNoteChange(e.target.value)}
+        placeholder={notePlaceholder ?? 'Note (optional)'}
+        className="w-full rounded-lg border border-cream-border bg-white px-2.5 py-1.5 text-sm text-espresso focus:outline-none focus:ring-2 focus:ring-gold-dark/40"
+      />
+      {error && <p className="text-xs text-error">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={isPending || (requireNote && !note.trim())}
+          onClick={onConfirm}
+          className="rounded-lg px-4 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+          style={{ background: confirmColor }}
+        >
+          {isPending ? 'Saving…' : confirmLabel}
+        </button>
+        <button
+          type="button" onClick={onBack}
+          className="rounded-lg px-4 py-1.5 text-xs font-semibold text-mocha/60 hover:text-mocha"
+        >
+          Back
+        </button>
+      </div>
     </div>
   )
 }
@@ -398,7 +782,7 @@ function AppointmentCard({
 
 export function AdminAppointments() {
   const [view, setView] = useState<'calendar' | 'list'>('calendar')
-  const [filter, setFilter] = useState<StatusFilter>('pending')
+  const [filter, setFilter] = useState<StatusFilter>('confirmed')
   const [selectedDate, setSelectedDate] = useState<string | null>(todayStr)
   const queryClient = useQueryClient()
 
@@ -585,7 +969,7 @@ export function AdminAppointments() {
                       : 'bg-cream-deep text-mocha hover:bg-cream-border'
                   }`}
                 >
-                  {tab}
+                  {TAB_LABEL[tab]}
                 </button>
               ))}
             </div>

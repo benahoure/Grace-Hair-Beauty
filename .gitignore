@@ -47,7 +47,8 @@ override.tf.json
 *_override.tf.json
 stripe-booking.md
 
-# Claude Code / AI assistant artifacts — do not commit
+
+# Ignore agent files for stripe payment assistance
 .claude/
 .agents/
 skills-lock.json

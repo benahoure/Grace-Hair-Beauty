@@ -18,19 +18,54 @@ const QUICK_NAV = [
   { label: 'Reviews', to: '/admin/reviews', icon: Star, accent: '#C87390' },
 ]
 
+// ── date helpers ─────────────────────────────────────────────────────────────
+
+function localDateStr(offset = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  return d.toLocaleDateString('en-CA') // YYYY-MM-DD
+}
+
+function fmtTime(t: string): string {
+  const [h, m] = t.split(':').map(Number)
+  const suffix = h < 12 ? 'AM' : 'PM'
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`
+}
+
+function fmtDayLabel(dateStr: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  return new Date(y, mo - 1, d).toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  })
+}
+
+// ── main component ────────────────────────────────────────────────────────────
+
 export function AdminDashboard() {
-  const appointments = useQuery({
-    queryKey: ['admin-appointments', 'pending'],
-    queryFn: () => api.getAdminAppointments({ status: 'pending' }),
+  const confirmedQuery = useQuery({
+    queryKey: ['admin-appointments', 'confirmed'],
+    queryFn: () => api.getAdminAppointments({ status: 'confirmed' }),
   })
   const messages = useQuery({
     queryKey: ['admin-messages'],
     queryFn: () => api.getAdminContactMessages({ read: false }),
   })
 
-  const pendingCount = appointments.data?.appointments.length ?? 0
+  const today    = localDateStr(0)
+  const in7Days  = localDateStr(6)
+
+  const allConfirmed = confirmedQuery.data?.appointments ?? []
+
+  const todayAppts = allConfirmed
+    .filter(a => a.preferredDate === today)
+    .sort((a, b) => a.preferredTime.localeCompare(b.preferredTime))
+
+  const weekCount = allConfirmed.filter(
+    a => a.preferredDate >= today && a.preferredDate <= in7Days,
+  ).length
+
   const unreadCount = messages.data?.messages.length ?? 0
-  const isLoading = appointments.isPending || messages.isPending
+  const isLoading   = confirmedQuery.isPending || messages.isPending
 
   return (
     <>
@@ -53,19 +88,17 @@ export function AdminDashboard() {
               </p>
               <h1 className="text-4xl font-bold tracking-tight text-cream md:text-5xl">Dashboard</h1>
               <p className="mt-2 text-sm" style={{ color: 'rgba(250,246,240,0.5)' }}>
-                Your salon at a glance. Jump into any section to manage today's work.
+                {fmtDayLabel(today)} &mdash; your salon at a glance.
               </p>
 
               {/* Stat chips */}
               <div className="mt-6 flex flex-wrap gap-3">
                 <StatChip
-                  label="Pending appointments"
-                  count={pendingCount}
+                  label="Today's appointments"
+                  count={todayAppts.length}
                   isLoading={isLoading}
                   to="/admin/appointments"
                   accentColor="#D4A843"
-                  trendPct={12}
-                  trendUp={true}
                 />
                 <StatChip
                   label="Unread messages"
@@ -73,15 +106,13 @@ export function AdminDashboard() {
                   isLoading={isLoading}
                   to="/admin/messages"
                   accentColor="#C87390"
-                  trendPct={5}
-                  trendUp={false}
                 />
               </div>
             </div>
 
             {/* Progress ring */}
             <div className="shrink-0">
-              <ProgressRing pending={pendingCount} target={10} isLoading={isLoading} />
+              <ProgressRing weekCount={weekCount} target={10} isLoading={isLoading} />
             </div>
           </div>
         </div>
@@ -101,43 +132,66 @@ export function AdminDashboard() {
 
         {/* Status panels */}
         <div className="mt-8 grid gap-4 md:grid-cols-2">
+
+          {/* Today's schedule */}
           <StatusPanel
-            title="Pending appointments"
+            title="Today's schedule"
             icon={<CalendarDays size={15} style={{ color: '#D4A843' }} />}
             accentColor="#D4A843"
-            isLoading={appointments.isPending}
+            isLoading={confirmedQuery.isPending}
           >
-            {appointments.isError ? (
+            {confirmedQuery.isError ? (
               <p className="text-sm text-error/80">Could not load appointments.</p>
-            ) : pendingCount > 0 ? (
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-2xl font-bold" style={{ color: '#D4A843' }}>{pendingCount}</span>
-                  <span className="ml-2 text-sm text-mocha/70">
-                    {pendingCount === 1 ? 'appointment' : 'appointments'} awaiting confirmation
-                  </span>
-                </div>
-                <Link
-                  to="/admin/appointments"
-                  className="rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all hover:opacity-80"
-                  style={{ background: 'rgba(212,168,67,0.15)', color: '#92400e' }}
-                >
-                  Review →
-                </Link>
-              </div>
-            ) : (
+            ) : todayAppts.length === 0 ? (
               <div className="flex items-center gap-2.5">
-                <div
-                  className="flex h-6 w-6 items-center justify-center rounded-full"
-                  style={{ background: 'rgba(34,197,94,0.15)' }}
-                >
+                <div className="flex h-6 w-6 items-center justify-center rounded-full"
+                  style={{ background: 'rgba(34,197,94,0.15)' }}>
                   <span className="text-[0.65rem]">✓</span>
                 </div>
-                <p className="text-sm text-mocha/60">All caught up — no pending appointments.</p>
+                <p className="text-sm text-mocha/60">No appointments scheduled for today.</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {todayAppts.slice(0, 5).map(a => (
+                  <div key={a.appointmentId}
+                    className="flex items-center justify-between rounded-xl px-3 py-2.5"
+                    style={{ background: 'rgba(212,168,67,0.06)', border: '1px solid rgba(212,168,67,0.12)' }}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-espresso">{a.clientName}</p>
+                      <p className="truncate text-xs text-mocha/55">{a.serviceName}</p>
+                    </div>
+                    <span
+                      className="ml-3 shrink-0 rounded-md px-2 py-0.5 text-xs font-bold tabular-nums"
+                      style={{ background: 'rgba(212,168,67,0.15)', color: '#92400e' }}
+                    >
+                      {fmtTime(a.preferredTime)}
+                    </span>
+                  </div>
+                ))}
+                {todayAppts.length > 5 && (
+                  <Link
+                    to="/admin/appointments"
+                    className="block pt-1 text-center text-xs font-semibold"
+                    style={{ color: '#D4A843' }}
+                  >
+                    +{todayAppts.length - 5} more — View all →
+                  </Link>
+                )}
+                {todayAppts.length <= 5 && (
+                  <Link
+                    to="/admin/appointments"
+                    className="block pt-1 text-right text-xs font-semibold"
+                    style={{ color: '#D4A843' }}
+                  >
+                    View all appointments →
+                  </Link>
+                )}
               </div>
             )}
           </StatusPanel>
 
+          {/* Unread messages */}
           <StatusPanel
             title="Unread messages"
             icon={<Inbox size={15} style={{ color: '#C87390' }} />}
@@ -164,10 +218,8 @@ export function AdminDashboard() {
               </div>
             ) : (
               <div className="flex items-center gap-2.5">
-                <div
-                  className="flex h-6 w-6 items-center justify-center rounded-full"
-                  style={{ background: 'rgba(34,197,94,0.15)' }}
-                >
+                <div className="flex h-6 w-6 items-center justify-center rounded-full"
+                  style={{ background: 'rgba(34,197,94,0.15)' }}>
                   <span className="text-[0.65rem]">✓</span>
                 </div>
                 <p className="text-sm text-mocha/60">No unread messages.</p>
@@ -180,21 +232,7 @@ export function AdminDashboard() {
   )
 }
 
-// ── Stat chip with CountUp + trend badge ──────────────────────────────────────
-
-function TrendBadge({ pct, up }: { pct: number; up: boolean }) {
-  return (
-    <span
-      className="ml-2 inline-flex items-center rounded-full px-1.5 py-0.5 text-[0.6rem] font-bold"
-      style={{
-        background: up ? 'rgba(212,168,67,0.15)' : 'rgba(200,115,144,0.15)',
-        color: up ? '#D4A843' : '#C87390',
-      }}
-    >
-      {up ? '↑' : '↓'} {pct}%
-    </span>
-  )
-}
+// ── Stat chip with CountUp ────────────────────────────────────────────────────
 
 function StatChip({
   label,
@@ -202,16 +240,12 @@ function StatChip({
   isLoading,
   to,
   accentColor,
-  trendPct,
-  trendUp,
 }: {
   label: string
   count: number
   isLoading: boolean
   to: string
   accentColor: string
-  trendPct: number
-  trendUp: boolean
 }) {
   return (
     <Link
@@ -231,17 +265,16 @@ function StatChip({
         </span>
       )}
       <span className="text-xs text-cream/55">{label}</span>
-      {!isLoading && <TrendBadge pct={trendPct} up={trendUp} />}
     </Link>
   )
 }
 
 // ── SVG Progress Ring ─────────────────────────────────────────────────────────
 
-function ProgressRing({ pending, target, isLoading }: { pending: number; target: number; isLoading: boolean }) {
+function ProgressRing({ weekCount, target, isLoading }: { weekCount: number; target: number; isLoading: boolean }) {
   const r = 40
   const circumference = 2 * Math.PI * r
-  const ratio = isLoading ? 0 : Math.min(pending / Math.max(target, 1), 1)
+  const ratio = isLoading ? 0 : Math.min(weekCount / Math.max(target, 1), 1)
   const offset = circumference * (1 - ratio)
 
   return (
@@ -250,7 +283,7 @@ function ProgressRing({ pending, target, isLoading }: { pending: number; target:
       style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
     >
       <p className="text-[0.6rem] font-bold uppercase tracking-[0.15em]" style={{ color: 'rgba(212,168,67,0.7)' }}>
-        Weekly Bookings
+        Next 7 Days
       </p>
       <div className="relative">
         <svg width={108} height={108} viewBox="0 0 108 108">
@@ -275,10 +308,10 @@ function ProgressRing({ pending, target, isLoading }: { pending: number; target:
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-bold leading-none text-cream">
-            {isLoading ? '–' : pending}
+            {isLoading ? '–' : weekCount}
           </span>
           <span className="mt-0.5 text-[0.6rem] font-semibold uppercase tracking-wide" style={{ color: 'rgba(250,246,240,0.45)' }}>
-            pending
+            booked
           </span>
         </div>
       </div>

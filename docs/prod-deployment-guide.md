@@ -5,7 +5,7 @@ Production deployments for Grace Hair Beauty should use GitHub Actions with AWS 
 ## Target Environment
 
 - Website: `https://gracehairsbeauty.com`
-- API: `https://api.gracehairsbeauty.com`
+- API: `https://gracehairsbeauty.com/api` (routed through CloudFront — no separate api. subdomain)
 - CDN: `https://cdn.gracehairsbeauty.com`
 - Cognito hosted UI: `https://auth.gracehairsbeauty.com`
 - Terraform vars: `infra/env/prod.tfvars`
@@ -29,7 +29,7 @@ Use GitHub Actions OIDC instead of static AWS keys. Production applies should re
 - SES production access has been approved.
 - GitHub repository has an AWS OIDC IAM role for production deployment.
 - GitHub production environment requires manual approval.
-- Production admin inbox is monitored: `ghbeauty24@gmail.com`.
+- Production admin inbox is monitored: `info@gracehairsbeauty.com`.
 - Production Cognito admin user process is ready.
 
 ## Recommended GitHub Actions Secrets and Variables
@@ -167,9 +167,9 @@ Production seeding should be controlled and idempotent where possible. Do not se
 ## Production Smoke Tests
 
 ```bash
-curl --fail https://api.gracehairsbeauty.com/services
-curl --fail https://api.gracehairsbeauty.com/business-settings
-curl --fail https://api.gracehairsbeauty.com/reviews
+curl --fail https://gracehairsbeauty.com/api/services
+curl --fail https://gracehairsbeauty.com/api/business-settings
+curl --fail https://gracehairsbeauty.com/api/reviews
 curl --fail https://gracehairsbeauty.com
 ```
 

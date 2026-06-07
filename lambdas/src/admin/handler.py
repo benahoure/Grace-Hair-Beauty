@@ -24,7 +24,9 @@ from common.dynamo import (
 )
 from common.errors import ForbiddenError, NotFoundError
 from common.http import method, parse_json_body, path, path_parameter, query_params, validation_errors
+from appointments.models import RescheduleRequest, is_within_24hrs
 from common.ids import new_id, ttl_days, utc_now
+from common.stripe_client import create_refund
 from common.logger import logger, safe_extra
 from common.response import bad_request, created, forbidden, internal_error, not_found, ok, options
 from common.security import decrypt_pii, require_admin, validate_cdn_url, validate_cdn_url_any
@@ -38,6 +40,25 @@ _cloudfront = boto3.client("cloudfront")
 class AppointmentPatch(BaseModel):
     status: Literal["confirmed", "cancelled", "completed"]
     adminNote: str | None = Field(default=None, max_length=500)
+
+
+class AdminOverrideBody(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class AdminForfeitBody(BaseModel):
+    action: Literal["late_cancel", "no_show"]
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class AdminRescheduleBody(BaseModel):
+    preferredDate: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    preferredTime: str = Field(pattern=r"^\d{2}:\d{2}$")
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class AdminNotesBody(BaseModel):
+    adminNotes: str = Field(max_length=1000)
 
 
 @logger.inject_lambda_context(log_event=False)
@@ -58,6 +79,16 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             return get_appointments(event)
         if path_parameter(event, "appointmentId") and request_method == "PATCH":
             return update_appointment(event, admin_user_id)
+        if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith("/cancel-refund"):
+            return admin_cancel_refund(event, admin_user_id)
+        if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith("/reschedule"):
+            return admin_reschedule(event, admin_user_id)
+        if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith("/refund"):
+            return admin_refund(event, admin_user_id)
+        if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith("/forfeit"):
+            return admin_forfeit(event, admin_user_id)
+        if path_parameter(event, "appointmentId") and request_method == "POST" and request_path.endswith("/override"):
+            return admin_override(event, admin_user_id)
         if request_path == "/admin/services" and request_method == "GET":
             return get_services(event)
         if request_path == "/admin/services" and request_method == "POST":
@@ -237,6 +268,199 @@ def update_appointment(event: dict, admin_user_id: str) -> dict:
     updated["clientEmail"] = decrypt_pii(updated.get("clientEmail"))
     updated["clientPhone"] = decrypt_pii(updated.get("clientPhone"))
     return ok(updated)
+
+
+def _get_appointment_or_404(appointment_id: str) -> dict | None:
+    return get_item(get_config().table_appointments, {"appointmentId": appointment_id})
+
+
+def _decrypt_appointment(appt: dict) -> dict:
+    appt["clientEmail"] = decrypt_pii(appt.get("clientEmail"))
+    appt["clientPhone"] = decrypt_pii(appt.get("clientPhone"))
+    return appt
+
+
+def _trigger_stripe_refund(appointment_id: str, charge_id: str, idempotency_suffix: str) -> None:
+    """Move deposit to refund_pending, call Stripe, handle rollback on failure."""
+    config = get_config()
+    now = utc_now()
+    update_item(
+        config.table_appointments,
+        {"appointmentId": appointment_id},
+        {"depositStatus": "refund_pending", "refundStatus": "pending", "updatedAt": now},
+    )
+    try:
+        create_refund(charge_id, idempotency_key=f"{appointment_id}-{idempotency_suffix}")
+    except Exception:
+        update_item(
+            config.table_appointments,
+            {"appointmentId": appointment_id},
+            {"depositStatus": "paid", "refundStatus": "none", "updatedAt": utc_now()},
+        )
+        raise
+
+
+def admin_cancel_refund(event: dict, admin_user_id: str) -> dict:
+    """Cancel by Salon + Refund Deposit. Always results in a full refund."""
+    appointment_id = resource_id(event, "appointmentId")
+    existing = _get_appointment_or_404(appointment_id)
+    if not existing:
+        return not_found("Appointment not found.")
+
+    deposit_status = existing.get("depositStatus")
+    if deposit_status == "refunded":
+        return bad_request("Deposit has already been refunded.")
+    if deposit_status == "refund_pending":
+        return bad_request("A refund is already being processed.")
+
+    charge_id = existing.get("stripeChargeId")
+    now = utc_now()
+
+    if deposit_status == "paid" and charge_id:
+        try:
+            _trigger_stripe_refund(appointment_id, charge_id, "admin-cancel")
+        except Exception:
+            logger.exception("Stripe refund failed in admin_cancel_refund", extra={"appointmentId": appointment_id})
+            return bad_request("Refund processing failed. Please try again or contact Stripe support.")
+        final_deposit_status = "refund_pending"
+    else:
+        # No charge on record — cancel without refund
+        final_deposit_status = deposit_status
+
+    updated = update_item(
+        get_config().table_appointments,
+        {"appointmentId": appointment_id},
+        {"status": "cancelled", "statusKey": "cancelled", "updatedAt": now},
+    )
+    audit(admin_user_id, "appointment.admin_cancel_refund", "appointment", appointment_id,
+          {"depositStatus": final_deposit_status})
+    return ok(_decrypt_appointment(updated))
+
+
+def admin_reschedule(event: dict, admin_user_id: str) -> dict:
+    """Admin reschedules appointment. Deposit stays paid (transfers in place)."""
+    appointment_id = resource_id(event, "appointmentId")
+    try:
+        body = AdminRescheduleBody.model_validate(parse_json_body(event))
+    except ValidationError as exc:
+        return bad_request(validation_errors(exc))
+
+    existing = _get_appointment_or_404(appointment_id)
+    if not existing:
+        return not_found("Appointment not found.")
+
+    old_date = existing["preferredDate"]
+    old_time = existing["preferredTime"]
+    now = utc_now()
+
+    updates: dict = {
+        "preferredDate": body.preferredDate,
+        "preferredTime": body.preferredTime,
+        "rescheduledAt": now,
+        "rescheduledFrom": f"{old_date}T{old_time}",
+        "rescheduledBy": "admin",
+        "updatedAt": now,
+    }
+    if body.reason:
+        updates["adminNotes"] = body.reason
+
+    try:
+        updated = update_item(get_config().table_appointments, {"appointmentId": appointment_id}, updates)
+    except NotFoundError:
+        return not_found("Appointment not found.")
+
+    audit(admin_user_id, "appointment.admin_rescheduled", "appointment", appointment_id,
+          {"from": f"{old_date}T{old_time}", "to": f"{body.preferredDate}T{body.preferredTime}", "reason": body.reason})
+    return ok(_decrypt_appointment(updated))
+
+
+def admin_refund(event: dict, admin_user_id: str) -> dict:
+    """Manually refund the deposit without cancelling the appointment (edge case)."""
+    appointment_id = resource_id(event, "appointmentId")
+    existing = _get_appointment_or_404(appointment_id)
+    if not existing:
+        return not_found("Appointment not found.")
+
+    deposit_status = existing.get("depositStatus")
+    if deposit_status == "refunded":
+        return ok({"message": "Deposit has already been refunded.", "depositStatus": "refunded"})
+    if deposit_status == "refund_pending":
+        return bad_request("A refund is already being processed.")
+    if deposit_status != "paid":
+        return bad_request(f"Cannot refund: deposit status is '{deposit_status}'.")
+
+    charge_id = existing.get("stripeChargeId")
+    if not charge_id:
+        return bad_request("No Stripe charge on record. Refund must be processed manually in Stripe dashboard.")
+
+    try:
+        _trigger_stripe_refund(appointment_id, charge_id, "admin-manual-refund")
+    except Exception:
+        logger.exception("Stripe refund failed in admin_refund", extra={"appointmentId": appointment_id})
+        return bad_request("Refund processing failed. Please try again.")
+
+    audit(admin_user_id, "appointment.admin_manual_refund", "appointment", appointment_id)
+    updated = _get_appointment_or_404(appointment_id) or existing
+    return ok(_decrypt_appointment(dict(updated)))
+
+
+def admin_forfeit(event: dict, admin_user_id: str) -> dict:
+    """Mark deposit as forfeited. Used for late cancel or no-show."""
+    appointment_id = resource_id(event, "appointmentId")
+    try:
+        body = AdminForfeitBody.model_validate(parse_json_body(event))
+    except ValidationError as exc:
+        return bad_request(validation_errors(exc))
+
+    existing = _get_appointment_or_404(appointment_id)
+    if not existing:
+        return not_found("Appointment not found.")
+
+    now = utc_now()
+    new_status = "cancelled" if body.action == "late_cancel" else "no_show"
+    updates: dict = {
+        "status": new_status,
+        "statusKey": new_status,
+        "depositStatus": "forfeited",
+        "updatedAt": now,
+    }
+    if body.reason:
+        updates["adminNotes"] = body.reason
+
+    try:
+        updated = update_item(get_config().table_appointments, {"appointmentId": appointment_id}, updates)
+    except NotFoundError:
+        return not_found("Appointment not found.")
+
+    audit(admin_user_id, f"appointment.{body.action}_deposit_forfeited", "appointment", appointment_id,
+          {"reason": body.reason})
+    return ok(_decrypt_appointment(updated))
+
+
+def admin_override(event: dict, admin_user_id: str) -> dict:
+    """Record an override reason for <24hr exceptions. Does not change status or deposit."""
+    appointment_id = resource_id(event, "appointmentId")
+    try:
+        body = AdminOverrideBody.model_validate(parse_json_body(event))
+    except ValidationError as exc:
+        return bad_request(validation_errors(exc))
+
+    existing = _get_appointment_or_404(appointment_id)
+    if not existing:
+        return not_found("Appointment not found.")
+
+    now = utc_now()
+    try:
+        updated = update_item(
+            get_config().table_appointments,
+            {"appointmentId": appointment_id},
+            {"adminOverrideReason": body.reason, "adminOverrideAt": now, "adminOverrideBy": admin_user_id, "updatedAt": now},
+        )
+    except NotFoundError:
+        return not_found("Appointment not found.")
+
+    audit(admin_user_id, "appointment.admin_override", "appointment", appointment_id, {"reason": body.reason})
+    return ok(_decrypt_appointment(updated))
 
 
 def create_service(event: dict, admin_user_id: str) -> dict:

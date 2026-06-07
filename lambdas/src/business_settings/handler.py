@@ -18,7 +18,7 @@ DEFAULT_HOURS = {
 DEFAULT_SETTINGS = {
     "businessName": "Grace Hair Beauty",
     "phone": "+13178503001",
-    "email": "plbahoure2993@gmail.com",
+    "email": "info@gracehairsbeauty.com",
     "address": {
         "street": "955 Baden Manor Dr",
         "city": "Indianapolis",
@@ -27,9 +27,9 @@ DEFAULT_SETTINGS = {
     },
     "hours": DEFAULT_HOURS,
     "socialLinks": {
-        "instagram": "https://www.instagram.com/ghbeauty24?igsh=MTM0bGxnMzF1OGI0Zw==",
+        "instagram": "https://www.instagram.com/ghbeauty24",
         "facebook": "https://www.facebook.com/GraceHairBeauty01/",
-        "tiktok": "https://www.tiktok.com/@ghbeauty24?_r=1&_t=ZT-96PlSWucAbW",
+        "tiktok": "https://www.tiktok.com/@ghbeauty24",
     },
     "googleMapsUrl": "https://www.google.com/search?kgmid=%2Fg%2F11yytfkdj8&q=Grace+hair+beauty",
     "googleReviewUrl": "https://www.google.com/search?kgmid=%2Fg%2F11yytfkdj8&q=Grace+hair+beauty",

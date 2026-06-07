@@ -3,30 +3,23 @@ from __future__ import annotations
 
 from html import escape
 
+# ── Design tokens — light-mode only (forces light mode to avoid iOS dark mode inversion) ──
+_BG          = "#F4EFE9"
+_CARD_BG     = "#FFFFFF"
+_GOLD        = "#C9A84C"
+_GOLD_DARK   = "#9A7630"
+_TEXT_DARK   = "#1A1008"
+_TEXT_BODY   = "#4A3728"
+_TEXT_MUTED  = "#7A6050"
+_BORDER      = "#E2D5C8"
+_ROW_ALT_BG  = "#FAF7F3"
+_FOOTER_BG   = "#F0EAE2"
+
 CTA_STYLE = (
-    "display: inline-block; background: #B8860B; color: #2C1810; "
-    "font: 700 13px Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; "
-    "text-decoration: none; padding: 14px 24px; border-radius: 999px; border: 1px solid #D4A843;"
-)
-OUTER_TABLE_STYLE = "background: #FAF6F0; margin: 0; padding: 32px 16px;"
-CARD_STYLE = (
-    "max-width: 640px; overflow: hidden; background: #FFFDF9; border: 1px solid #E4D9CE; "
-    "border-radius: 18px; box-shadow: 0 18px 48px rgba(44, 24, 16, 0.12);"
-)
-EYEBROW_STYLE = (
-    "font: 700 11px Arial, sans-serif; letter-spacing: .18em; text-transform: uppercase; color: #D4A843;"
-)
-TITLE_STYLE = (
-    "margin: 12px 0 0 0; color: #FAF6F0; font-family: Georgia, 'Times New Roman', serif; "
-    "font-size: 34px; line-height: 1.05; font-weight: 600;"
-)
-DETAIL_LABEL_STYLE = (
-    "padding: 14px 0; color: #A07850; font: 700 11px Arial, sans-serif; "
-    "letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid #E4D9CE; width: 38%;"
-)
-DETAIL_VALUE_STYLE = (
-    "padding: 14px 0; color: #2C1810; font: 600 15px/1.45 Arial, sans-serif; "
-    "border-bottom: 1px solid #E4D9CE;"
+    "display: inline-block; background-color: #C9A84C; color: #1A1008; "
+    "font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; "
+    "letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; "
+    "padding: 15px 36px; border-radius: 4px;"
 )
 
 
@@ -38,91 +31,193 @@ def email_layout(
     content: str,
     cta_label: str | None = None,
     cta_url: str | None = None,
+    show_check: bool = False,
 ) -> str:
-    cta = ""
+
+    check_html = ""
+    if show_check:
+        check_html = f"""
+              <tr>
+                <td align="center" style="padding: 0 0 20px 0;">
+                  <table border="0" cellpadding="0" cellspacing="0" role="presentation">
+                    <tr>
+                      <td bgcolor="{_GOLD}" width="52" height="52"
+                        style="border-radius: 26px; text-align: center; vertical-align: middle;
+                               font-size: 26px; font-family: Arial, sans-serif; color: #1A1008;
+                               line-height: 52px;">
+                        &#10003;
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>"""
+
+    cta_html = ""
     if cta_label and cta_url:
-        cta = f"""
+        cta_html = f"""
           <tr>
-            <td style="padding: 8px 32px 36px 32px; text-align: center;">
-              <a href="{escape(cta_url)}" style="{CTA_STYLE}">
-                {escape(cta_label)}
-              </a>
+            <td align="center" style="padding: 8px 40px 36px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td bgcolor="{_GOLD}" style="border-radius: 4px; text-align: center;">
+                    <a href="{escape(cta_url)}" target="_blank" style="{CTA_STYLE}">
+                      {escape(cta_label)}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 12px 0 0 0; font-family: Arial, sans-serif; font-size: 11px;
+                line-height: 1.5; color: {_TEXT_MUTED}; text-align: center;">
+                Use this link to view, reschedule, or cancel your appointment
+                (available more than 24 hours before your appointment).
+              </p>
             </td>
-          </tr>
-        """
+          </tr>"""
 
     return f"""<!doctype html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
     <title>{escape(title)}</title>
+    <style>
+      :root {{ color-scheme: light; supported-color-schemes: light; }}
+    </style>
   </head>
-  <body style="margin: 0; padding: 0; background: #FAF6F0;">
-    <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;">
-      {escape(preheader)}
+  <body style="margin: 0; padding: 0; background-color: {_BG};
+    -webkit-text-size-adjust: 100%; mso-line-height-rule: exactly;">
+
+    <!-- Preheader (hidden) -->
+    <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;
+      font-size: 1px; line-height: 1px; opacity: 0; color: {_BG};">
+      {escape(preheader)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
     </div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="{OUTER_TABLE_STYLE}">
+
+    <!-- Outer wrapper -->
+    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"
+      bgcolor="{_BG}" style="background-color: {_BG};">
       <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="{CARD_STYLE}">
+        <td align="center" style="padding: 36px 16px;">
+
+          <!-- Card -->
+          <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"
+            style="max-width: 580px; background-color: {_CARD_BG};
+              border-radius: 6px; overflow: hidden;
+              border: 1px solid {_BORDER};
+              box-shadow: 0 2px 16px rgba(26, 16, 8, 0.10);">
+
+            <!-- Gold accent bar -->
             <tr>
-              <td style="background: #2C1810; padding: 30px 32px; text-align: center;">
-                <div style="{EYEBROW_STYLE}">
+              <td bgcolor="{_GOLD}" height="4" style="font-size: 0; line-height: 0;">&nbsp;</td>
+            </tr>
+
+            <!-- Header -->
+            <tr>
+              <td align="center" style="padding: 32px 40px 24px 40px;
+                background-color: {_CARD_BG}; border-bottom: 1px solid {_BORDER};">
+                <p style="margin: 0; font-family: Arial, sans-serif; font-size: 10px;
+                  font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+                  color: {_GOLD_DARK};">
                   Grace Hair Beauty
-                </div>
-                <h1 style="{TITLE_STYLE}">
+                </p>
+                <h1 style="margin: 12px 0 0 0; font-family: Georgia, 'Times New Roman', serif;
+                  font-size: 26px; font-weight: 600; line-height: 1.2; color: {_TEXT_DARK};
+                  letter-spacing: -0.01em;">
                   {escape(title)}
                 </h1>
               </td>
             </tr>
+
+            <!-- Intro -->
             <tr>
-              <td style="padding: 30px 32px 10px 32px;">
-                <p style="margin: 0; color: #6B4226; font: 400 16px/1.65 Arial, sans-serif;">
-                  {escape(intro)}
-                </p>
+              <td style="padding: 28px 40px 8px 40px; background-color: {_CARD_BG};">
+                <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                  {check_html}
+                  <tr>
+                    <td>
+                      <p style="margin: 0; font-family: Arial, sans-serif; font-size: 15px;
+                        line-height: 1.65; color: {_TEXT_BODY};">
+                        {escape(intro)}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
+
+            <!-- Dynamic content -->
             {content}
-            {cta}
+
+            <!-- CTA -->
+            {cta_html}
+
+            <!-- Footer -->
             <tr>
-              <td style="background: #F2EAE0; border-top: 1px solid #E4D9CE; padding: 22px 32px; text-align: center;">
-                <p style="margin: 0; color: #6B4226; font: 400 12px/1.6 Arial, sans-serif;">
-                  Grace Hair Beauty · Indianapolis, IN
+              <td bgcolor="{_FOOTER_BG}" style="background-color: {_FOOTER_BG};
+                border-top: 1px solid {_BORDER}; padding: 20px 40px; text-align: center;">
+                <p style="margin: 0 0 4px 0; font-family: Arial, sans-serif; font-size: 12px;
+                  font-weight: 700; color: {_TEXT_DARK}; letter-spacing: 0.04em;">
+                  Grace Hair Beauty
+                </p>
+                <p style="margin: 0; font-family: Arial, sans-serif; font-size: 11px;
+                  line-height: 1.6; color: {_TEXT_MUTED};">
+                  Indianapolis, IN
+                  &nbsp;&middot;&nbsp;
+                  <a href="mailto:booking@gracehairsbeauty.com"
+                    style="color: {_TEXT_MUTED}; text-decoration: none;">
+                    booking@gracehairsbeauty.com
+                  </a>
                 </p>
               </td>
             </tr>
+
           </table>
+          <!-- /Card -->
+
         </td>
       </tr>
     </table>
+    <!-- /Outer wrapper -->
+
   </body>
 </html>"""
 
 
-def detail_row(label: str, value: str | None) -> str:
+def detail_row(label: str, value: str | None, alt: bool = False) -> str:
     if not value:
         return ""
+    bg = f"background-color: {_ROW_ALT_BG};" if alt else f"background-color: {_CARD_BG};"
     return f"""
       <tr>
-        <td style="{DETAIL_LABEL_STYLE}">
+        <td style="{bg} padding: 12px 0; width: 40%; vertical-align: top;
+          font-family: Arial, sans-serif; font-size: 11px; font-weight: 700;
+          letter-spacing: 0.08em; text-transform: uppercase; color: {_TEXT_MUTED};
+          border-bottom: 1px solid {_BORDER};">
           {escape(label)}
         </td>
-        <td style="{DETAIL_VALUE_STYLE}">
+        <td style="{bg} padding: 12px 0 12px 16px; vertical-align: top;
+          font-family: Arial, sans-serif; font-size: 14px; font-weight: 500;
+          line-height: 1.4; color: {_TEXT_DARK};
+          border-bottom: 1px solid {_BORDER};">
           {escape(value)}
         </td>
-      </tr>
-    """
+      </tr>"""
 
 
 def details_table(rows: list[tuple[str, str | None]]) -> str:
-    rendered_rows = "".join(detail_row(label, value) for label, value in rows)
+    rendered_rows = "".join(
+        detail_row(label, value, alt=(i % 2 == 1))
+        for i, (label, value) in enumerate(rows)
+    )
     return f"""
       <tr>
-        <td style="padding: 14px 32px 30px 32px;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+        <td style="padding: 16px 40px 24px 40px; background-color: {_CARD_BG};">
+          <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"
+            style="border-collapse: collapse; border-top: 1px solid {_BORDER};">
             {rendered_rows}
           </table>
         </td>
-      </tr>
-    """
+      </tr>"""

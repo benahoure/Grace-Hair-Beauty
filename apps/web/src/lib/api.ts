@@ -13,6 +13,9 @@ import type {
   AppointmentRequest,
   BusinessSettings,
   ContactRequest,
+  DateAvailability,
+  MonthAvailability,
+  PortalAppointment,
   PortfolioCategory,
   PortfolioItem,
   Review,
@@ -124,11 +127,79 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
     return defaultBusinessSettings as T
   }
 
-  if (path === '/appointments' && method === 'POST') {
+  if (path.startsWith('/availability')) {
+    const url = new URL(path, window.location.origin)
+    const monthParam = url.searchParams.get('month')
+    const dateParam = url.searchParams.get('date')
+    const today = new Date()
+    const todayLocalStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const cutoff24 = new Date(today.getTime() + 24 * 3600 * 1000)
+    if (monthParam) {
+      const [y, m] = monthParam.split('-').map(Number)
+      const daysInMonth = new Date(y, m, 0).getDate()
+      const dates = []
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+        const dow = new Date(y, m - 1, d).getDay()
+        let status: MonthAvailability['dates'][number]['status']
+        if (dateStr <= todayLocalStr) status = 'past'
+        else if (dow === 0) status = 'closed'  // Sunday closed in mock
+        else status = 'available'
+        dates.push({ date: dateStr, status, availableSlots: status === 'available' ? 4 : 0 })
+      }
+      return { month: monthParam, timezone: 'America/Chicago', dates } as T
+    }
+    if (dateParam) {
+      const dateObj = new Date(dateParam + 'T00:00:00')
+      const dow = dateObj.getDay()
+      if (dow === 0) return { date: dateParam, timezone: 'America/Chicago', slots: [] } as T
+      const rawHours = [9,10,11,12,13,14,15,16,17,18,19]
+      const slots = rawHours.flatMap((h) => {
+        const slotDt = new Date(dateParam + `T${String(h).padStart(2,'0')}:00:00`)
+        if (slotDt <= cutoff24) return []
+        const suffix = h < 12 ? 'AM' : 'PM'
+        const display = h % 12 || 12
+        return [{ time: `${display}:00 ${suffix}`, datetime: slotDt.toISOString(), available: true }]
+      })
+      return { date: dateParam, timezone: 'America/Chicago', slots } as T
+    }
+    return { date: '', timezone: 'America/Chicago', slots: [] } as T
+  }
+
+  if (path === '/appointments/payment-intent' && method === 'POST') {
+    return {
+      appointmentId: crypto.randomUUID(),
+      clientSecret: 'pi_mock_secret_for_dev',
+    } as T
+  }
+
+  if (path.includes('/appointments/') && path.endsWith('/confirm') && method === 'POST') {
+    return {
+      appointmentId: path.split('/')[2],
+      status: 'confirmed',
+      message: 'Your deposit has been paid.',
+      portalUrl: '/appointment/mock-token',
+    } as T
+  }
+
+  if (path.startsWith('/appointments/portal/') && method === 'GET') {
     return {
       appointmentId: crypto.randomUUID(),
       status: 'pending',
-      message: 'Your appointment request has been received. We will confirm within 24 hours.',
+      depositStatus: 'paid',
+      depositAmount: 3000,
+      remainingBalance: 15000,
+      serviceName: 'Knotless Braids',
+      servicePrice: 18000,
+      preferredDate: new Date(Date.now() + 48 * 3600000).toISOString().split('T')[0],
+      preferredTime: '10:00',
+      clientName: 'Jane Doe',
+      clientEmail: 'jane@example.com',
+      clientPhone: '+1 (555) 000-0000',
+      notes: '',
+      adminNote: null,
+      createdAt: new Date().toISOString(),
+      rescheduledAt: null,
     } as T
   }
 
@@ -210,10 +281,50 @@ export const api = {
   getReviews: () =>
     request<{ reviews: Review[]; aggregates: ReviewAggregates; nextCursor: string | null }>('/reviews', { cache: 'no-cache' }),
 
-  createAppointment: (body: AppointmentRequest) =>
-    request<{ appointmentId: string; status: string; message: string }>('/appointments', {
+  getMonthAvailability: (params: { serviceId?: string; month: string }) => {
+    const search = new URLSearchParams({ month: params.month })
+    if (params.serviceId) search.set('serviceId', params.serviceId)
+    return request<MonthAvailability>(`/availability?${search}`, { cache: 'no-cache' })
+  },
+
+  getDateSlots: (params: { serviceId?: string; date: string }) => {
+    const search = new URLSearchParams({ date: params.date })
+    if (params.serviceId) search.set('serviceId', params.serviceId)
+    return request<DateAvailability>(`/availability?${search}`, { cache: 'no-cache' })
+  },
+
+  createPaymentIntent: (body: AppointmentRequest & { policyAccepted: boolean }) =>
+    request<{ appointmentId: string; clientSecret: string }>('/appointments/payment-intent', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  confirmAppointment: (appointmentId: string, stripePaymentIntentId: string) =>
+    request<{ appointmentId: string; status: string; message: string; portalUrl: string }>(
+      `/appointments/${appointmentId}/confirm`,
+      { method: 'POST', body: JSON.stringify({ stripePaymentIntentId }) },
+    ),
+
+  getPortalAppointment: (token: string) =>
+    request<PortalAppointment>(`/appointments/portal/${token}`),
+
+  portalReschedule: (token: string, body: { preferredDate: string; preferredTime: string }) =>
+    request<PortalAppointment>(`/appointments/portal/${token}/reschedule`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  portalCancel: (token: string) =>
+    request<{ status: string; depositStatus: string; message: string }>(
+      `/appointments/portal/${token}/cancel`,
+      { method: 'POST', body: JSON.stringify({}) },
+    ),
+
+  /** @deprecated use createPaymentIntent instead */
+  createAppointment: (body: AppointmentRequest) =>
+    request<{ appointmentId: string; status: string; message: string }>('/appointments/payment-intent', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, policyAccepted: true }),
     }),
 
   createContactMessage: (body: ContactRequest) =>
@@ -241,6 +352,30 @@ export const api = {
     request<AdminAppointment>(`/admin/appointments/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
+    }),
+
+  adminCancelRefund: (id: string) =>
+    request<AdminAppointment>(`/admin/appointments/${id}/cancel-refund`, { method: 'POST', body: '{}' }),
+
+  adminReschedule: (id: string, body: { preferredDate: string; preferredTime: string; reason?: string }) =>
+    request<AdminAppointment>(`/admin/appointments/${id}/reschedule`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  adminRefundDeposit: (id: string) =>
+    request<AdminAppointment>(`/admin/appointments/${id}/refund`, { method: 'POST', body: '{}' }),
+
+  adminForfeitDeposit: (id: string, body: { action: 'late_cancel' | 'no_show'; reason?: string }) =>
+    request<AdminAppointment>(`/admin/appointments/${id}/forfeit`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  adminOverride: (id: string, reason: string) =>
+    request<AdminAppointment>(`/admin/appointments/${id}/override`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     }),
 
   // ── Admin — Services ────────────────────────────────────────────────────────

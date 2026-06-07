@@ -15,21 +15,24 @@ module "public_api" {
   local_existing_package = local.public_api_zip
 
   environment_variables = {
-    LOG_LEVEL               = var.log_level
-    ENVIRONMENT             = var.env
-    ALLOWED_ORIGIN          = var.allowed_origin
-    TABLE_SERVICES          = aws_dynamodb_table.services.name
-    TABLE_PORTFOLIO         = aws_dynamodb_table.portfolio.name
-    TABLE_REVIEWS           = aws_dynamodb_table.reviews.name
-    TABLE_BUSINESS_SETTINGS = aws_dynamodb_table.business_settings.name
-    TABLE_APPOINTMENTS      = aws_dynamodb_table.appointments.name
-    TABLE_CONTACT_MESSAGES  = aws_dynamodb_table.contact_messages.name
-    TABLE_AUDIT_LOG         = aws_dynamodb_table.admin_audit_log.name
-    TABLE_IDEMPOTENCY       = aws_dynamodb_table.idempotency.name
-    SES_SENDER_EMAIL        = var.ses_sender_email
-    ADMIN_ALERT_EMAIL       = var.admin_alert_email
-    KMS_KEY_ID              = aws_kms_key.data.arn
-    CDN_BASE_URL            = "https://cdn.${var.domain_name}"
+    LOG_LEVEL                 = var.log_level
+    ENVIRONMENT               = var.env
+    ALLOWED_ORIGIN            = var.allowed_origin
+    TABLE_SERVICES            = aws_dynamodb_table.services.name
+    TABLE_PORTFOLIO           = aws_dynamodb_table.portfolio.name
+    TABLE_REVIEWS             = aws_dynamodb_table.reviews.name
+    TABLE_BUSINESS_SETTINGS   = aws_dynamodb_table.business_settings.name
+    TABLE_APPOINTMENTS        = aws_dynamodb_table.appointments.name
+    TABLE_CONTACT_MESSAGES    = aws_dynamodb_table.contact_messages.name
+    TABLE_AUDIT_LOG           = aws_dynamodb_table.admin_audit_log.name
+    TABLE_IDEMPOTENCY         = aws_dynamodb_table.idempotency.name
+    KMS_KEY_ID                = aws_kms_key.data.arn
+    CDN_BASE_URL              = "https://cdn.${var.domain_name}"
+    STRIPE_SECRET_KEY_SSM     = aws_ssm_parameter.stripe_secret_key.name
+    STRIPE_WEBHOOK_SECRET_SSM = aws_ssm_parameter.stripe_webhook_secret.name
+    ZOHO_SMTP_USER_SSM        = aws_ssm_parameter.zoho_smtp_user.name
+    ZOHO_SMTP_PASSWORD_SSM    = aws_ssm_parameter.zoho_smtp_password.name
+    ZOHO_ADMIN_EMAILS_SSM     = aws_ssm_parameter.zoho_admin_emails.name
   }
 
   attach_policy_statements = true
@@ -39,11 +42,18 @@ module "public_api" {
       actions   = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:Scan"]
       resources = local.public_read_table_arns
     }
+    dynamo_appointments_write = {
+      effect  = "Allow"
+      actions = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan", "dynamodb:Query"]
+      resources = [
+        aws_dynamodb_table.appointments.arn,
+        "${aws_dynamodb_table.appointments.arn}/index/*",
+      ]
+    }
     dynamo_write = {
       effect  = "Allow"
       actions = ["dynamodb:PutItem"]
       resources = [
-        aws_dynamodb_table.appointments.arn,
         aws_dynamodb_table.contact_messages.arn,
         aws_dynamodb_table.reviews.arn,
         aws_dynamodb_table.admin_audit_log.arn,
@@ -59,17 +69,16 @@ module "public_api" {
       actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"]
       resources = [aws_dynamodb_table.idempotency.arn]
     }
-    ses_send = {
-      effect    = "Allow"
-      actions   = ["ses:SendEmail"]
-      resources = ["*"]
-      conditions = {
-        from_address = {
-          test     = "StringEquals"
-          variable = "ses:FromAddress"
-          values   = [var.ses_sender_email]
-        }
-      }
+    ssm_stripe = {
+      effect  = "Allow"
+      actions = ["ssm:GetParameter", "ssm:GetParameters"]
+      resources = [
+        aws_ssm_parameter.stripe_secret_key.arn,
+        aws_ssm_parameter.stripe_webhook_secret.arn,
+        aws_ssm_parameter.zoho_smtp_user.arn,
+        aws_ssm_parameter.zoho_smtp_password.arn,
+        aws_ssm_parameter.zoho_admin_emails.arn,
+      ]
     }
     xray = {
       effect    = "Allow"
