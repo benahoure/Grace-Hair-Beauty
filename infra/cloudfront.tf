@@ -30,6 +30,40 @@ resource "aws_cloudfront_function" "api_rewrite" {
   EOT
 }
 
+resource "aws_cloudfront_function" "www_redirect" {
+  name    = "gracehairsbeauty-${var.env}-www-redirect"
+  runtime = "cloudfront-js-2.0"
+  comment = "301 redirect www to apex domain"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var host = event.request.headers.host.value;
+      if (host.startsWith('www.')) {
+        var qs = event.request.querystring;
+        var pairs = [];
+        for (var k in qs) {
+          var mv = qs[k].multiValue;
+          if (mv) {
+            for (var i = 0; i < mv.length; i++) {
+              pairs.push(encodeURIComponent(k) + '=' + encodeURIComponent(mv[i].value));
+            }
+          } else {
+            pairs.push(encodeURIComponent(k) + '=' + encodeURIComponent(qs[k].value));
+          }
+        }
+        var location = 'https://' + host.slice(4) + event.request.uri;
+        if (pairs.length) location += '?' + pairs.join('&');
+        return {
+          statusCode: 301,
+          statusDescription: 'Moved Permanently',
+          headers: { location: { value: location } }
+        };
+      }
+      return event.request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_origin_access_control" "frontend" {
   name                              = "gracehairsbeauty-${var.env}-frontend-oac"
   description                       = "Frontend S3 origin access control"
@@ -176,6 +210,11 @@ resource "aws_cloudfront_distribution" "frontend" {
     response_headers_policy_id = aws_cloudfront_response_headers_policy.frontend_security.id
     target_origin_id           = "frontend-s3"
     viewer_protocol_policy     = "redirect-to-https"
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.www_redirect.arn
+    }
   }
 
   logging_config {

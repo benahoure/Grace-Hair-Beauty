@@ -2,22 +2,32 @@ import { useEffect } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
 import { PageMeta } from '../../components/seo/PageMeta'
-import { adminIsAuthenticated, redirectToCognito, setAdminToken } from '../../lib/auth'
+import {
+  adminIsAuthenticated,
+  exchangeCodeForToken,
+  redirectToCognito,
+  setAdminToken,
+} from '../../lib/auth'
 
 export function AdminRoot() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Handle Cognito callback — token is in the URL hash
-    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-    const accessToken = params.get('access_token')
-    if (accessToken) {
-      setAdminToken(accessToken)
-      navigate('/admin/dashboard', { replace: true })
+    // Handle Cognito authorization code callback (?code=...)
+    const searchParams = new URLSearchParams(window.location.search)
+    const code = searchParams.get('code')
+    if (code) {
+      exchangeCodeForToken(code).then(token => {
+        if (token) {
+          setAdminToken(token)
+          navigate('/admin/dashboard', { replace: true })
+        } else {
+          redirectToCognito()
+        }
+      })
       return
     }
 
-    // Not authenticated and no callback token → go straight to Cognito
     if (!adminIsAuthenticated()) {
       redirectToCognito()
     }
@@ -27,7 +37,6 @@ export function AdminRoot() {
     return <Navigate to="/admin/dashboard" replace />
   }
 
-  // Brief loading state while redirecting to Cognito
   return (
     <>
       <PageMeta
