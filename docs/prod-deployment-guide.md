@@ -147,6 +147,7 @@ Seed production only after infrastructure exists and before public launch.
 ```bash
 TABLE_SERVICES=gracehairsbeauty-prod-services \
 TABLE_BUSINESS_SETTINGS=gracehairsbeauty-prod-business-settings \
+TABLE_PORTFOLIO=gracehairsbeauty-prod-portfolio \
 TABLE_REVIEWS=gracehairsbeauty-prod-reviews \
 CDN_BASE_URL=https://cdn.gracehairsbeauty.com \
 python lambdas/scripts/seed_data.py
