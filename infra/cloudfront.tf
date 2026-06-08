@@ -124,7 +124,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   #checkov:skip=CKV_AWS_310:Single S3 origin is intentional; origin failover would add unused buckets and operational overhead
   #checkov:skip=CKV_AWS_374:Geo restriction is intentionally disabled so all clients can reach the public salon site
   #checkov:skip=CKV2_AWS_47:WAF is prod-only (enable_waf = true); dev intentionally skips WAF to reduce cost
-  aliases             = [var.domain_name]
+  aliases             = [var.domain_name, "www.${var.domain_name}"]
   enabled             = true
   default_root_object = "index.html"
   web_acl_id          = var.enable_waf ? aws_wafv2_web_acl.this[0].arn : null
