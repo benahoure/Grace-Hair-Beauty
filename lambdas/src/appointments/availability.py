@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, ConditionBase
 
 from appointments.models import DEFAULT_DURATION_MINUTES
 from common.config import get_config
@@ -80,7 +80,7 @@ def _overlaps(slot_start_min: int, slot_duration_min: int, windows: list[tuple[i
 
 def _collect_taken(
     table_name: str,
-    filter_expr: Attr,
+    filter_expr: ConditionBase,
     now_epoch: int,
 ) -> dict[str, list[tuple[int, int]]]:
     """

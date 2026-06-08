@@ -24,13 +24,13 @@ Use GitHub Actions OIDC instead of static AWS keys. Production applies should re
 ## Required AWS/GitHub Prerequisites
 
 - Route 53 hosted zone exists for `gracehairsbeauty.com`.
-- Terraform state bootstrap has already been completed.
+- Terraform state bootstrap has already been completed (runs once per AWS account — if dev is already deployed, the state bucket `gracehairsbeauty-tfstatefiles` and lock table `gracehairsbeauty-tflock` already exist; do not run bootstrap again).
+- **Dev Terraform must be applied before prod.** `infra/github-actions.tf` creates the AWS OIDC provider when `create_oidc_provider = true` (the default). `infra/env/prod.tfvars` sets `create_oidc_provider = false` and references the existing provider. If you run prod apply before dev apply, it will fail because the OIDC provider does not exist yet.
 - SES domain identity is verified.
 - SES production access has been approved.
-- GitHub repository has an AWS OIDC IAM role for production deployment.
-- GitHub production environment requires manual approval.
+- GitHub production environment requires manual approval (see GitHub Actions Workflows section below).
 - Production admin inbox is monitored: `info@gracehairsbeauty.com`.
-- Production Cognito admin user process is ready.
+- Production Cognito admin user created after Terraform apply.
 
 ## Recommended GitHub Actions Secrets and Variables
 
@@ -40,7 +40,7 @@ Recommended production variables:
 
 - `AWS_REGION=us-east-1`
 - `AWS_ROLE_TO_ASSUME=<prod-github-actions-oidc-role-arn>`
-- `VITE_API_BASE_URL=https://api.gracehairsbeauty.com`
+- `VITE_API_BASE_URL=https://gracehairsbeauty.com/api`
 - `VITE_CDN_BASE_URL=https://cdn.gracehairsbeauty.com`
 - `VITE_COGNITO_DOMAIN=auth.gracehairsbeauty.com`
 
@@ -53,83 +53,92 @@ Values discovered after Terraform apply:
 
 Do not store long-lived AWS access keys in GitHub.
 
-## Workflow 1: Infrastructure
+## GitHub Actions Workflows
 
-Trigger:
+Three workflow files exist at `.github/workflows/`. They use AWS OIDC — no static AWS keys stored in GitHub.
 
-- Pull requests touching `infra/**`.
-- Manual dispatch for production apply.
+### Workflow 1: Infrastructure (`deploy-infra.yml`)
 
-Recommended behavior:
+- **Trigger:** Manual dispatch only (GitHub Actions tab → Run workflow).
+- **Behavior:** Plan → upload plan artifact → wait for environment approval → apply.
+- **Use when:** `.tf` files change (new table, WAF rule update, CloudFront config, etc.).
+- Production infra never auto-deploys on push.
 
-```text
-checkout
-configure AWS credentials through OIDC
-terraform init -backend-config=backend/prod.tfbackend -reconfigure
-terraform fmt -check -recursive
-terraform validate
-terraform plan -var-file=env/prod.tfvars -out prod.tfplan
-upload/show plan
-wait for protected environment approval
-terraform apply prod.tfplan
+### Workflow 2: Backend (`deploy-backend.yml`)
+
+- **Trigger:** Push to `main` touching `lambdas/**`, or manual dispatch.
+- **Behavior:** ruff → mypy → pytest → security scan → build zips → deploy dev → wait for prod approval → deploy prod.
+- Lambda-only apply uses `-target=module.public_api -target=module.admin_api` to avoid touching unrelated infra.
+
+### Workflow 3: Frontend (`deploy-frontend.yml`)
+
+- **Trigger:** Push to `main` touching `apps/web/**`, or manual dispatch.
+- **Behavior:** lint → test → build with env-specific `VITE_*` vars → S3 sync → CloudFront invalidation → wait for prod approval → repeat for prod.
+
+### One-Time GitHub Setup
+
+Create two environments at **Settings → Environments**:
+
+**`development` environment:**
+
+| Type | Name | Value |
+|------|------|-------|
+| Variable | `AWS_ROLE_TO_ASSUME` | ARN from `terraform output github_actions_role_arn` (dev apply) |
+| Variable | `VITE_COGNITO_USER_POOL_ID` | `us-east-1_aDuZYaKEh` |
+| Variable | `VITE_COGNITO_CLIENT_ID` | `6sd3bcpitr8tc8622i8fa695mp` |
+| Variable | `CLOUDFRONT_DISTRIBUTION_ID` | `E1K2KEE846NSKL` |
+| Variable | `VITE_GOOGLE_REVIEW_URL` | your Google review URL |
+| Secret | `VITE_STRIPE_PUBLISHABLE_KEY` | `pk_test_51Tce2A...` |
+
+**`production` environment** (enable **Required reviewers** — add yourself as a required reviewer):
+
+| Type | Name | Value |
+|------|------|-------|
+| Variable | `AWS_ROLE_TO_ASSUME` | ARN from `terraform output github_actions_role_arn` (prod apply) |
+| Variable | `VITE_COGNITO_USER_POOL_ID` | from prod Terraform output |
+| Variable | `VITE_COGNITO_CLIENT_ID` | from prod Terraform output |
+| Variable | `CLOUDFRONT_DISTRIBUTION_ID` | from prod Terraform output |
+| Variable | `VITE_GOOGLE_REVIEW_URL` | your Google review URL |
+| Secret | `VITE_STRIPE_PUBLISHABLE_KEY` | `pk_live_...` (after Stripe live mode setup) |
+
+## Post-Apply: Update SSM Secrets
+
+After Terraform apply, the SSM parameters contain `REPLACE_ME` placeholders. Update them with real values:
+
+```bash
+aws ssm put-parameter \
+  --name "/gracehairsbeauty/prod/stripe/secret-key" \
+  --value "sk_live_..." \
+  --type SecureString --overwrite --region us-east-1
+
+aws ssm put-parameter \
+  --name "/gracehairsbeauty/prod/stripe/webhook-secret" \
+  --value "whsec_..." \
+  --type SecureString --overwrite --region us-east-1
+
+aws ssm put-parameter \
+  --name "/gracehairsbeauty/prod/zoho-smtp-password" \
+  --value "your-zoho-app-password" \
+  --type SecureString --overwrite --region us-east-1
 ```
 
-Production infra apply should not run automatically on every push.
+## Post-Apply: Create Prod Admin User
 
-## Workflow 2: Backend
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id <prod-user-pool-id> \
+  --username info@gracehairsbeauty.com \
+  --user-attributes Name=email,Value=info@gracehairsbeauty.com Name=email_verified,Value=true \
+  --region us-east-1
 
-Trigger:
-
-- Changes under `lambdas/**`.
-- Manual dispatch.
-
-Recommended behavior:
-
-```text
-checkout
-set up Python 3.14
-install requirements-dev.txt
-run ruff
-run mypy
-run pytest
-run security scans if enabled
-build public-api.zip and admin-api.zip
-configure AWS credentials through OIDC
-terraform init -backend-config=backend/prod.tfbackend -reconfigure
-terraform plan -var-file=env/prod.tfvars -out prod-backend.tfplan
-wait for protected environment approval
-terraform apply prod-backend.tfplan
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id <prod-user-pool-id> \
+  --username info@gracehairsbeauty.com \
+  --group-name admins \
+  --region us-east-1
 ```
 
-Current Terraform expects local artifacts:
-
-- `lambdas/dist/public-api.zip`
-- `lambdas/dist/admin-api.zip`
-
-For a stronger production setup, build immutable artifacts in CI and upload them to an S3 artifact bucket keyed by Git SHA, then have Terraform deploy those S3 artifact keys.
-
-## Workflow 3: Frontend
-
-Trigger:
-
-- Changes under `apps/web/**`.
-- Manual dispatch.
-
-Recommended behavior:
-
-```text
-checkout
-set up Node
-npm ci
-npm run lint
-npm test
-build with production VITE_* variables
-configure AWS credentials through OIDC
-aws s3 sync apps/web/dist s3://gracehairsbeauty-prod-frontend --delete --exclude ".DS_Store"
-aws cloudfront create-invalidation --distribution-id <prod-frontend-distribution-id> --paths "/*"
-```
-
-This is the path that prevents manual frontend uploads to S3 after every website change.
+Cognito emails a temporary password to `info@gracehairsbeauty.com`. First login at `https://auth.gracehairsbeauty.com` forces a password change.
 
 ## Production Data Seed
 
@@ -138,6 +147,7 @@ Seed production only after infrastructure exists and before public launch.
 ```bash
 TABLE_SERVICES=gracehairsbeauty-prod-services \
 TABLE_BUSINESS_SETTINGS=gracehairsbeauty-prod-business-settings \
+TABLE_PORTFOLIO=gracehairsbeauty-prod-portfolio \
 TABLE_REVIEWS=gracehairsbeauty-prod-reviews \
 CDN_BASE_URL=https://cdn.gracehairsbeauty.com \
 python lambdas/scripts/seed_data.py

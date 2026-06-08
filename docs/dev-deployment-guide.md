@@ -5,7 +5,7 @@ This guide brings up the `dev` Grace Hair Beauty environment manually. Use it be
 ## Target Environment
 
 - Website: `https://dev.gracehairsbeauty.com`
-- API: `https://api.dev.gracehairsbeauty.com`
+- API: `https://dev.gracehairsbeauty.com/api` (routed through CloudFront — no separate api. subdomain)
 - CDN: `https://cdn.dev.gracehairsbeauty.com`
 - Cognito hosted UI: `https://auth.dev.gracehairsbeauty.com`
 - Terraform vars: `infra/env/dev.tfvars`
@@ -144,7 +144,7 @@ Important: verify service and portfolio image URLs before launch. The frontend m
 ```bash
 cd apps/web
 
-VITE_API_BASE_URL=https://api.dev.gracehairsbeauty.com \
+VITE_API_BASE_URL=https://dev.gracehairsbeauty.com/api \
 VITE_CDN_BASE_URL=https://cdn.dev.gracehairsbeauty.com \
 VITE_COGNITO_USER_POOL_ID=<dev-user-pool-id> \
 VITE_COGNITO_CLIENT_ID=<dev-client-id> \
@@ -177,9 +177,9 @@ aws cloudfront create-invalidation \
 ## 9. Smoke Test Dev
 
 ```bash
-curl --fail https://api.dev.gracehairsbeauty.com/services
-curl --fail https://api.dev.gracehairsbeauty.com/business-settings
-curl --fail https://api.dev.gracehairsbeauty.com/reviews
+curl --fail https://dev.gracehairsbeauty.com/api/services
+curl --fail https://dev.gracehairsbeauty.com/api/business-settings
+curl --fail https://dev.gracehairsbeauty.com/api/reviews
 curl --fail https://dev.gracehairsbeauty.com
 ```
 
