@@ -107,6 +107,16 @@ jobs:
             --cache-control "no-cache,no-store,must-revalidate" \
             --no-cli-pager
 
+      - name: Sync assets to CDN bucket
+        working-directory: apps/web
+        run: |
+          aws s3 sync public/services s3://gracehairsbeauty-dev-assets/services \
+            --delete --cache-control "public,max-age=31536000,immutable" \
+            --exclude ".DS_Store" --no-cli-pager
+          aws s3 sync public/products s3://gracehairsbeauty-dev-assets/products \
+            --delete --cache-control "public,max-age=31536000,immutable" \
+            --exclude ".DS_Store" --no-cli-pager
+
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
@@ -164,6 +174,14 @@ jobs:
           aws s3 cp dist/index.html s3://gracehairsbeauty-prod-frontend/index.html \
             --cache-control "no-cache,no-store,must-revalidate" \
             --no-cli-pager
+
+      - name: Sync assets to CDN bucket
+        working-directory: apps/web
+        run: |
+          aws s3 sync public/services s3://gracehairsbeauty-prod-assets/services \
+            --delete --cache-control "public,max-age=31536000,immutable" --no-cli-pager
+          aws s3 sync public/products s3://gracehairsbeauty-prod-assets/products \
+            --delete --cache-control "public,max-age=31536000,immutable" --no-cli-pager
 
       - name: Invalidate CloudFront
         run: |
