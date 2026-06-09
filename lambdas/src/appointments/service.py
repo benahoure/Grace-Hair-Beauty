@@ -12,7 +12,7 @@ from appointments.models import (
     PaymentIntentRequest,
 )
 from common.config import get_config
-from common.dynamo import get_item, put_item, scan_items, update_item
+from common.dynamo import get_item, put_item, scan_items, update_item, update_item_with_removes
 from common.email_layout import details_table as _details_table
 from common.email_layout import email_layout as _email_layout
 from common.errors import NotFoundError
@@ -318,10 +318,11 @@ def confirm_appointment(appointment_id: str, req: ConfirmAppointmentRequest) -> 
     if charge_id:
         updates["stripeChargeId"] = charge_id
 
-    updated = update_item(
+    updated = update_item_with_removes(
         config.table_appointments,
         {"appointmentId": appointment_id},
         updates,
+        remove_fields=["expiresAt"],
     )
 
     put_item(
@@ -407,7 +408,12 @@ def confirm_appointment_from_webhook(appointment_id: str, charge_id: str | None,
         updates["stripeChargeId"] = charge_id
 
     try:
-        update_item(config.table_appointments, {"appointmentId": appointment_id}, updates)
+        update_item_with_removes(
+            config.table_appointments,
+            {"appointmentId": appointment_id},
+            updates,
+            remove_fields=["expiresAt"],
+        )
     except NotFoundError:
         logger.warning("Webhook: appointment disappeared during confirm", extra={"appointmentId": appointment_id})
         return

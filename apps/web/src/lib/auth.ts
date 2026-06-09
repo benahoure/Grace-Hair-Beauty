@@ -51,6 +51,58 @@ export function adminIsAuthenticated(): boolean {
   }
 }
 
+type LoginResult = { success: true; token: string } | { success: false; error: string }
+
+export async function loginWithPassword(email: string, password: string): Promise<LoginResult> {
+  const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID
+  const poolId = import.meta.env.VITE_COGNITO_USER_POOL_ID
+  if (!clientId || !poolId) return { success: false, error: 'Auth is not configured.' }
+
+  const region = poolId.split('_')[0]
+
+  try {
+    const response = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+      },
+      body: JSON.stringify({
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        ClientId: clientId,
+        AuthParameters: { USERNAME: email, PASSWORD: password },
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      const code: string = data.__type ?? ''
+      if (code === 'NotAuthorizedException' || code === 'UserNotFoundException') {
+        return { success: false, error: 'Incorrect email or password.' }
+      }
+      if (code === 'TooManyRequestsException' || code === 'LimitExceededException') {
+        return { success: false, error: 'Too many attempts. Please wait a moment and try again.' }
+      }
+      if (code === 'UserNotConfirmedException') {
+        return { success: false, error: 'Account not confirmed. Contact your administrator.' }
+      }
+      if (code === 'PasswordResetRequiredException') {
+        return { success: false, error: 'Password reset required. Use "Forgot your password?" on the sign-in page.' }
+      }
+      return { success: false, error: 'Sign in failed. Please try again.' }
+    }
+
+    const token: string | undefined =
+      data.AuthenticationResult?.IdToken ?? data.AuthenticationResult?.AccessToken
+    if (!token) return { success: false, error: 'Sign in failed. Please try again.' }
+
+    return { success: true, token }
+  } catch {
+    return { success: false, error: 'Connection error. Check your internet and try again.' }
+  }
+}
+
 export function logoutFromCognito(): void {
   clearAdminToken()
   const domain = import.meta.env.VITE_COGNITO_DOMAIN

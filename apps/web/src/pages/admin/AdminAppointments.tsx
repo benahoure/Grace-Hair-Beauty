@@ -10,7 +10,7 @@ import { AdminPageShell } from './AdminDashboard'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const STATUS_TABS = ['confirmed', 'pending', 'completed', 'cancelled', 'all'] as const
+const STATUS_TABS = ['confirmed', 'pending', 'completed', 'cancelled', 'no_show', 'all'] as const
 type StatusFilter = typeof STATUS_TABS[number]
 
 const TAB_LABEL: Record<StatusFilter, string> = {
@@ -18,7 +18,17 @@ const TAB_LABEL: Record<StatusFilter, string> = {
   pending:    'Awaiting Review',
   completed:  'Completed',
   cancelled:  'Cancelled',
+  no_show:    'No Show',
   all:        'All',
+}
+
+const STATUS_DISPLAY: Record<string, string> = {
+  pending:         'Pending',
+  confirmed:       'Confirmed',
+  cancelled:       'Cancelled',
+  completed:       'Completed',
+  no_show:         'No Show',
+  pending_payment: 'Payment Pending',
 }
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; dot: string }> = {
@@ -26,6 +36,7 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; dot: string }> =
   confirmed: { bg: 'rgba(34,197,94,0.12)',   color: '#166534',  dot: '#22C55E' },
   cancelled: { bg: 'rgba(239,68,68,0.12)',   color: '#991b1b',  dot: '#EF4444' },
   completed: { bg: 'rgba(59,130,246,0.12)',  color: '#1e40af',  dot: '#60A5FA' },
+  no_show:   { bg: 'rgba(249,115,22,0.12)',  color: '#9a3412',  dot: '#F97316' },
 }
 
 const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
@@ -62,12 +73,13 @@ function fmtTime(t: string) {
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_STYLE[status] ?? { bg: 'rgba(0,0,0,0.06)', color: '#555', dot: '#aaa' }
+  const label = STATUS_DISPLAY[status] ?? status
   return (
     <span
-      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize"
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
       style={{ background: s.bg, color: s.color }}
     >
-      {status}
+      {label}
     </span>
   )
 }
@@ -239,7 +251,7 @@ function AppointmentCalendar({
               const apts = byDate.get(dateStr) ?? []
               const isToday    = dateStr === today
               const isSelected = dateStr === selectedDate
-              const statusOrder = ['pending', 'confirmed', 'completed', 'cancelled']
+              const statusOrder = ['pending', 'confirmed', 'completed', 'cancelled', 'no_show']
               const presentStatuses = statusOrder.filter(s => apts.some(a => a.status === s))
 
               return (
@@ -281,9 +293,9 @@ function AppointmentCalendar({
             style={{ borderTop: '1px solid rgba(0,0,0,0.05)', background: 'rgba(0,0,0,0.015)' }}
           >
             {Object.entries(STATUS_STYLE).map(([key, { dot }]) => (
-              <span key={key} className="flex items-center gap-1.5 text-[0.6rem] capitalize text-mocha/50">
+              <span key={key} className="flex items-center gap-1.5 text-[0.6rem] text-mocha/50">
                 <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
-                {key}
+                {STATUS_DISPLAY[key] ?? key}
               </span>
             ))}
           </div>
