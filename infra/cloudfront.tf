@@ -112,7 +112,7 @@ resource "aws_cloudfront_response_headers_policy" "frontend_security" {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob: https://cdn.${var.domain_name} https://maps.gstatic.com https://*.stripe.com https://*.link.com",
-        "connect-src 'self' https://cognito-idp.${var.aws_region}.amazonaws.com https://gracehairsbeauty-${var.env}-assets.s3.amazonaws.com https://api.stripe.com https://link.com https://*.link.com",
+        "connect-src 'self' https://auth.${var.domain_name} https://cognito-idp.${var.aws_region}.amazonaws.com https://gracehairsbeauty-${var.env}-assets.s3.amazonaws.com https://api.stripe.com https://link.com https://*.link.com",
         "frame-src https://www.google.com https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://link.com https://*.link.com",
         "object-src 'none'",
         "base-uri 'self'",

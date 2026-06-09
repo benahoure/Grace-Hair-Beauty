@@ -51,6 +51,15 @@ export function adminIsAuthenticated(): boolean {
   }
 }
 
+export function logoutFromCognito(): void {
+  clearAdminToken()
+  const domain = import.meta.env.VITE_COGNITO_DOMAIN
+  const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID
+  if (!domain || !clientId) return
+  const logoutUri = encodeURIComponent(`${window.location.origin}/admin`)
+  window.location.assign(`https://${domain}/logout?client_id=${clientId}&logout_uri=${logoutUri}`)
+}
+
 export async function redirectToCognito(): Promise<void> {
   const domain = import.meta.env.VITE_COGNITO_DOMAIN
   const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID

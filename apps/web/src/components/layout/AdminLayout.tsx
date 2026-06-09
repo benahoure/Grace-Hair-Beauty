@@ -1,7 +1,7 @@
 import { CalendarDays, Image, Inbox, LayoutDashboard, LogOut, Scissors, Settings, Star } from 'lucide-react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 
-import { clearAdminToken } from '../../lib/auth'
+import { logoutFromCognito } from '../../lib/auth'
 
 const NAV_ITEMS = [
   { label: 'Dashboard',    to: '/admin/dashboard',    icon: LayoutDashboard },
@@ -16,11 +16,8 @@ const NAV_ITEMS = [
 const SIDEBAR_BG = 'linear-gradient(180deg, #08060C 0%, #0E0A12 40%, #140C10 100%)'
 
 export function AdminLayout() {
-  const navigate = useNavigate()
-
   const handleLogout = () => {
-    clearAdminToken()
-    navigate('/admin', { replace: true })
+    logoutFromCognito()
   }
 
   return (
