@@ -12,7 +12,7 @@ from appointments.models import (
     PaymentIntentRequest,
 )
 from common.config import get_config
-from common.dynamo import get_item, put_item, scan_items, update_item, update_item_with_removes
+from common.dynamo import get_item, put_item, scan_items, update_item_with_removes
 from common.email_layout import details_table as _details_table
 from common.email_layout import email_layout as _email_layout
 from common.errors import NotFoundError
