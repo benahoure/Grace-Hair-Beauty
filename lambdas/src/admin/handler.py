@@ -22,18 +22,193 @@ from common.dynamo import (
     update_item,
     update_item_with_removes,
 )
+from common.email_layout import ACCENT_CANCELLED, ACCENT_FORFEITED, ACCENT_NOSHOW, ACCENT_RESCHEDULED
+from common.email_layout import details_table as _details_table
+from common.email_layout import email_layout as _email_layout
 from common.errors import ForbiddenError, NotFoundError
 from common.http import method, parse_json_body, path, path_parameter, query_params, validation_errors
 from common.ids import new_id, ttl_days, utc_now
 from common.logger import logger, safe_extra
 from common.response import bad_request, created, forbidden, internal_error, not_found, ok, options
 from common.security import decrypt_pii, require_admin, validate_cdn_url, validate_cdn_url_any
+from common.ses_client import best_effort_send_email, notify_admin
 from common.stripe_client import create_refund
 from portfolio.models import PortfolioPatch, PortfolioWrite
 from reviews.models import ReviewPatch, ReviewWrite
 from services.models import ServicePatch, ServiceWrite
 
 _cloudfront = boto3.client("cloudfront")
+
+
+def _fmt_date(value: str) -> str:
+    import datetime as dt
+    return dt.date.fromisoformat(value).strftime("%A, %B %-d, %Y")
+
+
+def _fmt_time(value: str) -> str:
+    hour, minute = (int(p) for p in value.split(":"))
+    suffix = "AM" if hour < 12 else "PM"
+    return f"{hour % 12 or 12}:{minute:02d} {suffix}"
+
+
+def _notify_admin_html(
+    title: str,
+    intro: str,
+    rows: list[tuple[str, str | None]],
+    accent_color: str | None = None,
+) -> str:
+    config = get_config()
+    kwargs: dict = {}
+    if accent_color:
+        kwargs["accent_color"] = accent_color
+        kwargs["cta_text_color"] = "#FFFFFF"
+    return _email_layout(
+        preheader=intro,
+        title=title,
+        intro=intro,
+        content=_details_table(rows),
+        cta_label="Open Admin Dashboard",
+        cta_url=f"{config.allowed_origin}/admin/appointments",
+        **kwargs,
+    )
+
+
+def _send_admin_cancel_email(appt: dict) -> None:
+    client_email = decrypt_pii(appt.get("clientEmail", "")) or ""
+    if not client_email:
+        return
+    name = appt.get("clientName", "there")
+    service_name = appt.get("serviceName", "")
+    date = appt.get("preferredDate", "")
+    time = appt.get("preferredTime", "")
+    config = get_config()
+    html_body = _email_layout(
+        preheader="Your appointment has been cancelled by the salon. A refund has been initiated.",
+        title="Appointment Cancelled",
+        intro=(
+            f"Hi {name}, your {service_name} appointment has been cancelled by the salon. "
+            "A full refund of $30.00 has been initiated to your original payment method. "
+            "Please allow 5–10 business days for the refund to appear."
+        ),
+        content=_details_table([
+            ("Service",  service_name),
+            ("Date",     _fmt_date(date)),
+            ("Time",     _fmt_time(time)),
+            ("Refund",   "$30.00 to your original payment method"),
+        ]),
+        cta_label="Book Again",
+        cta_url=f"{config.allowed_origin}/book",
+        accent_color=ACCENT_CANCELLED,
+        cta_text_color="#FFFFFF",
+    )
+    best_effort_send_email(
+        to_address=client_email,
+        subject="Grace Hair Beauty: Appointment Cancelled — Refund Initiated",
+        text_body=(
+            f"Hi {name},\n\nYour {service_name} appointment on {_fmt_date(date)} has been cancelled by the salon.\n\n"
+            "A full refund of $30.00 has been initiated to your original payment method.\n"
+            "Please allow 5–10 business days.\n\nGrace Hair Beauty"
+        ),
+        html_body=html_body,
+    )
+
+
+def _send_admin_reschedule_email(appt: dict, new_date: str, new_time: str) -> None:
+    client_email = decrypt_pii(appt.get("clientEmail", "")) or ""
+    if not client_email:
+        return
+    name = appt.get("clientName", "there")
+    service_name = appt.get("serviceName", "")
+    old_date = appt.get("preferredDate", "")
+    old_time = appt.get("preferredTime", "")
+    token = appt.get("appointmentToken", "")
+    config = get_config()
+    portal_url = f"{config.allowed_origin}/appointment/{token}" if token else f"{config.allowed_origin}/book"
+    html_body = _email_layout(
+        preheader=f"Your appointment has been rescheduled to {_fmt_date(new_date)}.",
+        title="Appointment Rescheduled",
+        intro=(
+            f"Hi {name}, the salon has rescheduled your {service_name} appointment. "
+            "Your $30 deposit has been transferred to the new date — no additional deposit is required."
+        ),
+        content=_details_table([
+            ("Service",       service_name),
+            ("Previous date", _fmt_date(old_date)),
+            ("Previous time", _fmt_time(old_time)),
+            ("New date",      _fmt_date(new_date)),
+            ("New time",      _fmt_time(new_time)),
+            ("Deposit",       "$30 transferred to your new date"),
+        ]),
+        cta_label="View My Appointment",
+        cta_url=portal_url,
+        accent_color=ACCENT_RESCHEDULED,
+        cta_text_color="#FFFFFF",
+    )
+    best_effort_send_email(
+        to_address=client_email,
+        subject=f"Grace Hair Beauty: Appointment Rescheduled to {_fmt_date(new_date)}",
+        text_body=(
+            f"Hi {name},\n\nYour {service_name} appointment has been rescheduled by the salon.\n\n"
+            f"New date: {_fmt_date(new_date)}\nNew time: {_fmt_time(new_time)}\n"
+            "Your $30 deposit transfers to the new date.\n\n"
+            f"View your appointment: {portal_url}\n\nGrace Hair Beauty"
+        ),
+        html_body=html_body,
+    )
+
+
+def _send_admin_forfeit_email(appt: dict, action: str) -> None:
+    client_email = decrypt_pii(appt.get("clientEmail", "")) or ""
+    if not client_email:
+        return
+    name = appt.get("clientName", "there")
+    service_name = appt.get("serviceName", "")
+    date = appt.get("preferredDate", "")
+    time = appt.get("preferredTime", "")
+    config = get_config()
+    if action == "late_cancel":
+        title = "Appointment Cancelled — Deposit Forfeited"
+        intro = (
+            f"Hi {name}, your {service_name} appointment has been cancelled. "
+            "As the cancellation was made within 24 hours of your appointment, "
+            "the $30 deposit has been forfeited per our cancellation policy."
+        )
+        preheader = "Your appointment was cancelled — deposit forfeited per late cancellation policy."
+        forfeit_accent = ACCENT_FORFEITED
+    else:
+        title = "Missed Appointment — Deposit Forfeited"
+        intro = (
+            f"Hi {name}, you missed your {service_name} appointment on {_fmt_date(date)}. "
+            "The $30 deposit has been forfeited per our no-show policy. "
+            "We'd love to see you — please book again when you're ready."
+        )
+        preheader = "Your appointment was marked as no-show — deposit forfeited."
+        forfeit_accent = ACCENT_NOSHOW
+    html_body = _email_layout(
+        preheader=preheader,
+        title=title,
+        intro=intro,
+        content=_details_table([
+            ("Service", service_name),
+            ("Date",    _fmt_date(date)),
+            ("Time",    _fmt_time(time)),
+            ("Deposit", "Forfeited per cancellation policy"),
+        ]),
+        cta_label="Book Again",
+        cta_url=f"{config.allowed_origin}/book",
+        accent_color=forfeit_accent,
+        cta_text_color="#FFFFFF",
+    )
+    best_effort_send_email(
+        to_address=client_email,
+        subject=f"Grace Hair Beauty: {title}",
+        text_body=(
+            f"Hi {name},\n\n{intro}\n\n"
+            f"Service: {service_name}\nDate: {_fmt_date(date)}\nTime: {_fmt_time(time)}\n\n"
+            f"Book again: {config.allowed_origin}/book\n\nGrace Hair Beauty"
+        ),
+        html_body=html_body,
+    )
 
 
 class AppointmentPatch(BaseModel):
@@ -335,6 +510,24 @@ def admin_cancel_refund(event: dict, admin_user_id: str) -> dict:
     )
     audit(admin_user_id, "appointment.admin_cancel_refund", "appointment", appointment_id,
           {"depositStatus": final_deposit_status})
+    _send_admin_cancel_email(existing)
+    notify_admin(
+        f"Appointment cancelled by admin: {existing.get('serviceName', '')}",
+        f"Client: {existing.get('clientName', '')} | {_fmt_date(existing.get('preferredDate', ''))}",
+        html_body=_notify_admin_html(
+            "Appointment Cancelled by Admin",
+            f"Admin cancelled {existing.get('clientName', '')}'s "
+            f"{existing.get('serviceName', '')} on {_fmt_date(existing.get('preferredDate', ''))}.",
+            [
+                ("Client",  existing.get("clientName", "")),
+                ("Service", existing.get("serviceName", "")),
+                ("Date",    _fmt_date(existing.get("preferredDate", ""))),
+                ("Time",    _fmt_time(existing.get("preferredTime", ""))),
+                ("Refund",  "Initiated" if final_deposit_status == "refund_pending" else "N/A"),
+            ],
+            accent_color=ACCENT_CANCELLED,
+        ),
+    )
     return ok(_decrypt_appointment(updated))
 
 
@@ -372,6 +565,24 @@ def admin_reschedule(event: dict, admin_user_id: str) -> dict:
 
     audit(admin_user_id, "appointment.admin_rescheduled", "appointment", appointment_id,
           {"from": f"{old_date}T{old_time}", "to": f"{body.preferredDate}T{body.preferredTime}", "reason": body.reason})
+    _send_admin_reschedule_email(existing, body.preferredDate, body.preferredTime)
+    notify_admin(
+        f"Appointment rescheduled by admin: {existing.get('serviceName', '')}",
+        f"Client: {existing.get('clientName', '')} | {_fmt_date(old_date)} → {_fmt_date(body.preferredDate)}",
+        html_body=_notify_admin_html(
+            "Appointment Rescheduled by Admin",
+            f"Admin rescheduled {existing.get('clientName', '')}'s {existing.get('serviceName', '')}.",
+            [
+                ("Client",        existing.get("clientName", "")),
+                ("Service",       existing.get("serviceName", "")),
+                ("Previous date", _fmt_date(old_date)),
+                ("Previous time", _fmt_time(old_time)),
+                ("New date",      _fmt_date(body.preferredDate)),
+                ("New time",      _fmt_time(body.preferredTime)),
+            ],
+            accent_color=ACCENT_RESCHEDULED,
+        ),
+    )
     return ok(_decrypt_appointment(updated))
 
 
@@ -435,6 +646,24 @@ def admin_forfeit(event: dict, admin_user_id: str) -> dict:
 
     audit(admin_user_id, f"appointment.{body.action}_deposit_forfeited", "appointment", appointment_id,
           {"reason": body.reason})
+    _send_admin_forfeit_email(existing, body.action)
+    notify_admin(
+        f"{'Late cancel' if body.action == 'late_cancel' else 'No-show'}: {existing.get('serviceName', '')}",
+        f"Client: {existing.get('clientName', '')} | "
+        f"{_fmt_date(existing.get('preferredDate', ''))} — deposit forfeited.",
+        html_body=_notify_admin_html(
+            "Late Cancel — Deposit Forfeited" if body.action == "late_cancel" else "No-Show — Deposit Forfeited",
+            f"{existing.get('clientName', '')}'s deposit was forfeited ({body.action.replace('_', ' ')}).",
+            [
+                ("Client",  existing.get("clientName", "")),
+                ("Service", existing.get("serviceName", "")),
+                ("Date",    _fmt_date(existing.get("preferredDate", ""))),
+                ("Time",    _fmt_time(existing.get("preferredTime", ""))),
+                ("Reason",  body.reason or "—"),
+            ],
+            accent_color=ACCENT_FORFEITED if body.action == "late_cancel" else ACCENT_NOSHOW,
+        ),
+    )
     return ok(_decrypt_appointment(updated))
 
 

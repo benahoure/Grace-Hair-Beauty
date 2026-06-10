@@ -15,12 +15,12 @@ _BORDER      = "#E2D5C8"
 _ROW_ALT_BG  = "#FAF7F3"
 _FOOTER_BG   = "#F0EAE2"
 
-CTA_STYLE = (
-    "display: inline-block; background-color: #C9A84C; color: #1A1008; "
-    "font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; "
-    "letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; "
-    "padding: 15px 36px; border-radius: 4px;"
-)
+# ── Accent colours by email type ──
+ACCENT_CONFIRMED   = "#C9A84C"  # gold — booking confirmed
+ACCENT_RESCHEDULED = "#3D7E9E"  # steel blue — calm, informational
+ACCENT_CANCELLED   = "#9B5068"  # rose-mauve — regretful but professional
+ACCENT_FORFEITED   = "#B05A30"  # terracotta — firm policy enforcement
+ACCENT_NOSHOW      = "#8B6840"  # bronze-brown — firm, neutral
 
 
 def email_layout(
@@ -32,6 +32,8 @@ def email_layout(
     cta_label: str | None = None,
     cta_url: str | None = None,
     show_check: bool = False,
+    accent_color: str = _GOLD,
+    cta_text_color: str = _TEXT_DARK,
 ) -> str:
 
     check_html = ""
@@ -41,9 +43,9 @@ def email_layout(
                 <td align="center" style="padding: 0 0 20px 0;">
                   <table border="0" cellpadding="0" cellspacing="0" role="presentation">
                     <tr>
-                      <td bgcolor="{_GOLD}" width="52" height="52"
+                      <td bgcolor="{accent_color}" width="52" height="52"
                         style="border-radius: 26px; text-align: center; vertical-align: middle;
-                               font-size: 26px; font-family: Arial, sans-serif; color: #1A1008;
+                               font-size: 26px; font-family: Arial, sans-serif; color: {cta_text_color};
                                line-height: 52px;">
                         &#10003;
                       </td>
@@ -52,6 +54,13 @@ def email_layout(
                 </td>
               </tr>"""
 
+    _cta_style = (
+        f"display: inline-block; background-color: {accent_color}; color: {cta_text_color}; "
+        "font-family: Arial, sans-serif; font-size: 13px; font-weight: 700; "
+        "letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none; "
+        "padding: 15px 36px; border-radius: 4px;"
+    )
+
     cta_html = ""
     if cta_label and cta_url:
         cta_html = f"""
@@ -59,8 +68,8 @@ def email_layout(
             <td align="center" style="padding: 8px 40px 36px 40px;">
               <table border="0" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
-                  <td bgcolor="{_GOLD}" style="border-radius: 4px; text-align: center;">
-                    <a href="{escape(cta_url)}" target="_blank" style="{CTA_STYLE}">
+                  <td bgcolor="{accent_color}" style="border-radius: 4px; text-align: center;">
+                    <a href="{escape(cta_url)}" target="_blank" style="{_cta_style}">
                       {escape(cta_label)}
                     </a>
                   </td>
@@ -109,9 +118,9 @@ def email_layout(
               border: 1px solid {_BORDER};
               box-shadow: 0 2px 16px rgba(26, 16, 8, 0.10);">
 
-            <!-- Gold accent bar -->
+            <!-- Accent bar -->
             <tr>
-              <td bgcolor="{_GOLD}" height="4" style="font-size: 0; line-height: 0;">&nbsp;</td>
+              <td bgcolor="{accent_color}" height="4" style="font-size: 0; line-height: 0;">&nbsp;</td>
             </tr>
 
             <!-- Header -->
