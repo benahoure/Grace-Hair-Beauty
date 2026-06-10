@@ -12,6 +12,7 @@ from appointments.models import (
 )
 from common.config import get_config
 from common.dynamo import put_item, query_index, scan_items, update_item
+from common.email_layout import ACCENT_CANCELLED, ACCENT_RESCHEDULED
 from common.email_layout import details_table as _details_table
 from common.email_layout import email_layout as _email_layout
 from common.errors import NotFoundError
@@ -215,6 +216,23 @@ def portal_reschedule(token: str, req: RescheduleRequest) -> dict:
         f"Client rescheduled: {service_name}",
         f"{name} rescheduled from {_format_date(old_date)} {_format_time(old_time)}"
         f" to {_format_date(new_date)} {_format_time(new_time)}.",
+        html_body=_email_layout(
+            preheader=f"{name} rescheduled their {service_name} appointment.",
+            title="Client Rescheduled Appointment",
+            intro=f"{name} has rescheduled their {service_name} appointment.",
+            content=_details_table([
+                ("Client",        name),
+                ("Service",       service_name),
+                ("Previous date", _format_date(old_date)),
+                ("Previous time", _format_time(old_time)),
+                ("New date",      _format_date(new_date)),
+                ("New time",      _format_time(new_time)),
+            ]),
+            cta_label="Open Admin Dashboard",
+            cta_url=f"{get_config().allowed_origin}/admin/appointments",
+            accent_color=ACCENT_RESCHEDULED,
+            cta_text_color="#FFFFFF",
+        ),
     )
 
     return _safe_appointment({**appt, **updated})
@@ -307,6 +325,22 @@ def portal_cancel(token: str) -> dict:
     notify_admin(
         f"Client cancelled: {service_name}",
         f"{name} cancelled their {_format_date(appt['preferredDate'])} appointment. Stripe refund initiated.",
+        html_body=_email_layout(
+            preheader=f"{name} cancelled their {service_name} appointment.",
+            title="Client Cancelled Appointment",
+            intro=f"{name} has cancelled their {service_name} appointment. A $30 Stripe refund has been initiated.",
+            content=_details_table([
+                ("Client",  name),
+                ("Service", service_name),
+                ("Date",    _format_date(appt["preferredDate"])),
+                ("Time",    _format_time(appt["preferredTime"])),
+                ("Refund",  "$30 Stripe refund initiated"),
+            ]),
+            cta_label="Open Admin Dashboard",
+            cta_url=f"{get_config().allowed_origin}/admin/appointments",
+            accent_color=ACCENT_CANCELLED,
+            cta_text_color="#FFFFFF",
+        ),
     )
 
     return {
@@ -351,6 +385,8 @@ def _send_reschedule_confirmation(
         content=content,
         cta_label="View My Appointment",
         cta_url=portal_url,
+        accent_color=ACCENT_RESCHEDULED,
+        cta_text_color="#FFFFFF",
     )
     best_effort_send_email(
         to_address=client_email,
@@ -372,23 +408,29 @@ def _send_cancel_confirmation(
     date: str,
     time: str,
 ) -> None:
+    config = get_config()
     html_body = _email_layout(
-        preheader="Your appointment has been cancelled.",
+        preheader="Your appointment has been cancelled and a refund has been initiated.",
         title="Appointment Cancelled",
         intro=(
             f"Hi {name}, your {service_name} appointment on {_format_date(date)} has been cancelled. "
             "A refund of $30.00 has been initiated to your original payment method. "
             "Please allow 5–10 business days for the refund to appear."
         ),
-        content="<p style='font-size:13px;color:#6B4226;margin:12px 0;'>"
-                "If you would prefer to transfer your deposit to a future appointment, "
-                "please contact us directly and we will be happy to help.</p>",
-        cta_label="Contact Us",
-        cta_url=get_config().allowed_origin + "/contact",
+        content=_details_table([
+            ("Service", service_name),
+            ("Date",    _format_date(date)),
+            ("Time",    _format_time(time)),
+            ("Refund",  "$30.00 to your original payment method"),
+        ]),
+        cta_label="Book Again",
+        cta_url=config.allowed_origin + "/book",
+        accent_color=ACCENT_CANCELLED,
+        cta_text_color="#FFFFFF",
     )
     best_effort_send_email(
         to_address=client_email,
-        subject="Grace Hair Beauty: Appointment Cancelled, Refund Initiated",
+        subject="Grace Hair Beauty: Appointment Cancelled — Refund Initiated",
         text_body=(
             f"Hi {name},\n\nYour {service_name} appointment on {_format_date(date)} has been cancelled.\n\n"
             "A $30.00 refund has been initiated to your original payment method.\n"
