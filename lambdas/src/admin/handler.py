@@ -1066,7 +1066,7 @@ def generate_upload_url(event: dict, admin_user_id: str) -> dict:
     if content_type not in _ALLOWED_CONTENT_TYPES:
         return bad_request("contentType must be a supported image type (jpeg, png, webp, gif)")
     safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)[:100]
-    key = f"{folder}/{new_id()}/{safe_name}"
+    key = f"uploads/{folder}/{new_id()}/{safe_name}"
     config = get_config()
     s3_client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"))
     upload_url = s3_client.generate_presigned_url(
