@@ -292,7 +292,7 @@ export function Header({ settings }: HeaderProps) {
 
   const navLinks = [
     { to: '/products',  label: 'Products' },
-    { to: '/portfolio', label: 'Portfolio' },
+    { to: '/gallery',   label: 'Gallery' },
     { to: '/book',      label: 'Book' },
     { to: '/reviews',   label: 'Reviews' },
   ]
@@ -482,7 +482,7 @@ export function Header({ settings }: HeaderProps) {
             ],
           },
           { to: '/products',  label: 'Products' },
-          { to: '/portfolio', label: 'Portfolio' },
+          { to: '/gallery',  label: 'Gallery' },
           { to: '/book',      label: 'Book' },
           { to: '/about',     label: 'About' },
           { to: '/reviews',   label: 'Reviews' },

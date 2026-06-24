@@ -75,10 +75,10 @@ export function AdminPortfolio() {
 
   return (
     <>
-      <PageMeta title="Portfolio | Admin" description="" canonical="" />
+      <PageMeta title="Gallery | Admin" description="" canonical="" />
       <AdminPageShell
-        title="Portfolio"
-        intro="Manage portfolio photos. Toggle items visible or featured, add new photos, or attach photos to services."
+        title="Gallery"
+        intro="Manage gallery photos. Toggle items visible or featured, add new photos, or attach photos to services."
         action={
           <button
             type="button"

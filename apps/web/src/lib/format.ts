@@ -33,12 +33,39 @@ export function formatAddress(settings: BusinessSettings): string {
   return `${street}, ${city}, ${state} ${zip}`
 }
 
+function _formatHour(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  const suffix = h < 12 ? 'AM' : 'PM'
+  const display = h % 12 || 12
+  return m === 0 ? `${display}:00 ${suffix}` : `${display}:${String(m).padStart(2, '0')} ${suffix}`
+}
+
+const _DAY_ABBR = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 export function formatHours(settings: BusinessSettings): string {
-  const canonical = days.every((day) => {
-    const value = settings.hours[day]
-    return value.open === '09:00' && value.close === '20:00' && !value.closed
+  type Seg = { from: number; to: number; closed: boolean; open: string; close: string }
+  const segments: Seg[] = []
+
+  days.forEach((day, i) => {
+    const h = settings.hours[day]
+    const last = segments[segments.length - 1]
+    const sameAsPrev =
+      last &&
+      last.closed === h.closed &&
+      (h.closed || (last.open === h.open && last.close === h.close))
+    if (sameAsPrev) {
+      last.to = i
+    } else {
+      segments.push({ from: i, to: i, closed: h.closed, open: h.open, close: h.close })
+    }
   })
-  return canonical ? 'Monday–Sunday, 9:00 AM–8:00 PM' : 'See current hours'
+
+  return segments
+    .map(({ from, to, closed, open, close }) => {
+      const label = from === to ? _DAY_ABBR[from] : `${_DAY_ABBR[from]}–${_DAY_ABBR[to]}`
+      return closed ? `${label}: Closed` : `${label}: ${_formatHour(open)} – ${_formatHour(close)}`
+    })
+    .join(' · ')
 }
 
 export function shortDate(value: string | null | undefined): string {

@@ -54,6 +54,6 @@ describe('production content guardrails', () => {
   it('formats default business phone and hours correctly', () => {
     expect(defaultBusinessSettings.businessName).toBe('Grace Hair Beauty')
     expect(formatPhone(defaultBusinessSettings.phone)).toBe('+1 (317)-850-3001')
-    expect(formatHours(defaultBusinessSettings)).toBe('Monday–Sunday, 9:00 AM–8:00 PM')
+    expect(formatHours(defaultBusinessSettings)).toBe('Mon–Sun: 9:00 AM – 8:00 PM')
   })
 })

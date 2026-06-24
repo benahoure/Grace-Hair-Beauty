@@ -8,7 +8,7 @@ import type { BusinessSettings } from '../../types'
 const EXPLORE_LINKS = [
   { label: 'Services', to: '/services' },
   { label: 'Products', to: '/products' },
-  { label: 'Portfolio', to: '/portfolio' },
+  { label: 'Gallery', to: '/gallery' },
   { label: 'Book Appointment', to: '/book' },
   { label: 'About', to: '/about' },
   { label: 'Reviews', to: '/reviews' },

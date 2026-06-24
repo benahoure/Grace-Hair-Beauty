@@ -108,7 +108,7 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
     return { services } as T
   }
 
-  if (path.startsWith('/portfolio')) {
+  if (path.startsWith('/gallery') || path.startsWith('/portfolio')) {
     const url = new URL(path, window.location.origin)
     const category = url.searchParams.get('category') as PortfolioCategory | null
     const items = mockPortfolio.filter((item) => item.active && (!category || item.category === category))

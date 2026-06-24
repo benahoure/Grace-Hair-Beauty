@@ -44,7 +44,8 @@ def create_payment_intent(amount_cents: int, metadata: dict[str, Any]) -> stripe
         params={
             "amount": amount_cents,
             "currency": "usd",
-            "payment_method_types": ["card", "cashapp", "klarna"],
+            # card covers debit, credit, Apple Pay, and Google Pay via wallet detection
+            "payment_method_types": ["card", "cashapp", "amazon_pay", "link"],
             "metadata": metadata,
         }
     )

@@ -64,10 +64,10 @@ export function Portfolio() {
       <PageMeta
         title="Hair Gallery | Braids, Natural Styles & More"
         description="Browse client style categories including knotless braids, sew-in, natural hairstyles, kids styles, and men's styles."
-        canonical="https://gracehairsbeauty.com/portfolio"
+        canonical="https://gracehairsbeauty.com/gallery"
       />
       <PageHero
-        eyebrow="Portfolio"
+        eyebrow="Gallery"
         title="Real Styles,"
         italicTitle="Real Care."
         description="Browse braids, protective styles, natural hair, men’s styles, and kids looks, then bring your favorite inspiration into the booking form."

@@ -49,6 +49,8 @@ def get_reviews(event: dict) -> dict:
             if not str(item.get("reviewId", "")).startswith("AGGREGATE#")
         ]
         aggregate = get_item(get_config().table_reviews, {"reviewId": "AGGREGATE#RATINGS"}) or {}
+        if not aggregate:
+            aggregate = _compute_and_store_aggregate()
         return ok(
             {
                 "reviews": reviews,
@@ -65,6 +67,43 @@ def get_reviews(event: dict) -> dict:
     except Exception:
         logger.exception("Failed to fetch reviews")
         return internal_error()
+
+
+def _compute_and_store_aggregate() -> dict:
+    """Scan all approved reviews, persist the aggregate row, and return it.
+
+    Called when AGGREGATE#RATINGS is missing — self-heals without admin action.
+    """
+    all_items: list[dict] = []
+    cursor = None
+    while True:
+        page, cursor = scan_items(
+            get_config().table_reviews,
+            filter_expression=bool_filter("approved", True),
+            limit=100,
+            cursor=cursor,
+        )
+        all_items.extend(
+            it for it in page
+            if not str(it.get("reviewId", "")).startswith("AGGREGATE#")
+        )
+        if not cursor:
+            break
+    total = len(all_items)
+    rating_sum = sum(int(it.get("rating", 0)) for it in all_items)
+    average = round(rating_sum / total, 2) if total else 0
+    agg = {"averageRating": average, "totalCount": total}
+    put_item(
+        get_config().table_reviews,
+        {
+            "reviewId": "AGGREGATE#RATINGS",
+            "totalCount": total,
+            "sumRatings": rating_sum,
+            "averageRating": average,
+            "updatedAt": utc_now(),
+        },
+    )
+    return agg
 
 
 def submit_review(event: dict) -> dict:
