@@ -148,7 +148,7 @@ export function Home() {
               <p className="eyebrow">Our Work</p>
               <h2 className="display-heading mt-3 text-3xl font-semibold md:text-5xl">Real Styles, Real Care.</h2>
             </div>
-            <Link className="btn btn-outline self-start" to="/portfolio">
+            <Link className="btn btn-outline self-start" to="/gallery">
               View Full Gallery
             </Link>
           </div>

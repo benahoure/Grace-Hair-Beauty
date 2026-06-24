@@ -43,7 +43,8 @@ export function App() {
         <Route index element={<Home />} />
         <Route path="services" element={<Services />} />
         <Route path="products" element={<Products />} />
-        <Route path="portfolio" element={<Portfolio />} />
+        <Route path="gallery" element={<Portfolio />} />
+        <Route path="portfolio" element={<Navigate to="/gallery" replace />} />
         <Route path="book" element={<Book />} />
         <Route path="about" element={<About />} />
         <Route path="reviews" element={<Reviews />} />
@@ -91,12 +92,16 @@ export function App() {
           }
         />
         <Route
-          path="admin/portfolio"
+          path="admin/gallery"
           element={
             <ProtectedAdminRoute>
               <AdminPortfolio />
             </ProtectedAdminRoute>
           }
+        />
+        <Route
+          path="admin/portfolio"
+          element={<Navigate to="/admin/gallery" replace />}
         />
         <Route
           path="admin/reviews"

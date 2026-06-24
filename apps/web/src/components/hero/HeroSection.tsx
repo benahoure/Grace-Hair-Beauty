@@ -423,7 +423,7 @@ export function HeroSection() {
                 </Link>
                 <Link
                   className="btn hero-mobile-work-cta"
-                  to="/portfolio"
+                  to="/gallery"
                   style={{
                     justifyContent: 'center',
                     border: '1px solid rgba(250,246,240,0.48)',
@@ -552,7 +552,7 @@ export function HeroSection() {
             </h1>
             <p className="mt-6 max-w-lg text-lg leading-[1.8] text-espresso">{BODY_COPY}</p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <Link className="btn btn-outline" to="/portfolio">View Our Work</Link>
+              <Link className="btn btn-outline" to="/gallery">View Our Work</Link>
             </div>
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-mocha">
               {TRUST_ITEMS.map((item) => (
@@ -704,7 +704,7 @@ export function HeroSection() {
               </Link>
               <Link
                 className="hero-work-cta"
-                to="/portfolio"
+                to="/gallery"
               >
                 View Our Work
               </Link>

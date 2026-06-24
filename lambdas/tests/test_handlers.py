@@ -163,6 +163,78 @@ def test_public_reviews_return_approved_only(monkeypatch, lambda_context) -> Non
     assert body["reviews"][0]["source"] == "website"
     assert body["reviews"][0]["serviceName"] == "Knotless Braids"
     assert body["aggregates"]["totalCount"] == 1
+    assert body["aggregates"]["averageRating"] == 5
+
+
+def test_public_reviews_self_heal_aggregate_when_missing(monkeypatch, lambda_context) -> None:
+    """When AGGREGATE#RATINGS is absent, the handler computes and stores it on the fly."""
+    from reviews import handler
+
+    review_row = {
+        "reviewId": "approved-1",
+        "clientName": "Mariame F.",
+        "rating": 5,
+        "body": "Amazing service!",
+        "approved": True,
+        "featured": False,
+        "source": "submitted",
+        "createdAt": "2026-06-01T00:00:00Z",
+    }
+
+    stored: list[dict] = []
+
+    monkeypatch.setattr(handler, "scan_items", lambda *a, **kw: ([review_row], None))
+    monkeypatch.setattr(handler, "get_item", lambda *a, **kw: None)
+    monkeypatch.setattr(handler, "put_item", lambda _table, item: stored.append(item))
+
+    response = handler.lambda_handler({"rawPath": "/reviews"}, lambda_context)
+    body = json.loads(response["body"])
+
+    assert response["statusCode"] == 200
+    assert body["aggregates"]["totalCount"] == 1
+    assert body["aggregates"]["averageRating"] == 5.0
+    assert body["reviews"][0]["clientName"] == "Mariame F."
+
+    assert len(stored) == 1
+    assert stored[0]["reviewId"] == "AGGREGATE#RATINGS"
+    assert stored[0]["totalCount"] == 1
+    assert stored[0]["averageRating"] == 5.0
+
+
+def test_public_reviews_self_heal_aggregate_excludes_aggregate_row(monkeypatch, lambda_context) -> None:
+    """AGGREGATE# rows in the scan result are not counted as real reviews."""
+    from reviews import handler
+
+    rows = [
+        {
+            "reviewId": "approved-1",
+            "clientName": "Client A",
+            "rating": 4,
+            "body": "Great!",
+            "approved": True,
+            "featured": False,
+            "source": "submitted",
+            "createdAt": "2026-06-01T00:00:00Z",
+        },
+        {
+            "reviewId": "AGGREGATE#RATINGS",
+            "totalCount": 0,
+            "averageRating": 0,
+        },
+    ]
+
+    stored: list[dict] = []
+
+    monkeypatch.setattr(handler, "scan_items", lambda *a, **kw: (rows, None))
+    monkeypatch.setattr(handler, "get_item", lambda *a, **kw: None)
+    monkeypatch.setattr(handler, "put_item", lambda _table, item: stored.append(item))
+
+    response = handler.lambda_handler({"rawPath": "/reviews"}, lambda_context)
+    body = json.loads(response["body"])
+
+    assert body["aggregates"]["totalCount"] == 1
+    assert body["aggregates"]["averageRating"] == 4.0
+    assert stored[0]["totalCount"] == 1
 
 
 def test_public_reviews_post_route_exists() -> None:
