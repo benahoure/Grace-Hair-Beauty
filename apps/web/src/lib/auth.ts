@@ -103,6 +103,65 @@ export async function loginWithPassword(email: string, password: string): Promis
   }
 }
 
+export async function forgotPasswordRequest(email: string): Promise<{ success: true } | { success: false; error: string }> {
+  const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID
+  const poolId = import.meta.env.VITE_COGNITO_USER_POOL_ID
+  if (!clientId || !poolId) return { success: false, error: 'Auth is not configured.' }
+  const region = poolId.split('_')[0]
+  try {
+    const response = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AWSCognitoIdentityProviderService.ForgotPassword',
+      },
+      body: JSON.stringify({ ClientId: clientId, Username: email }),
+    })
+    if (!response.ok) {
+      const data = await response.json()
+      const code: string = data.__type ?? ''
+      if (code === 'UserNotFoundException') return { success: false, error: 'No account found with that email.' }
+      if (code === 'LimitExceededException') return { success: false, error: 'Too many attempts. Please wait and try again.' }
+      return { success: false, error: 'Could not send reset code. Try again.' }
+    }
+    return { success: true }
+  } catch {
+    return { success: false, error: 'Connection error. Check your internet and try again.' }
+  }
+}
+
+export async function confirmPasswordReset(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID
+  const poolId = import.meta.env.VITE_COGNITO_USER_POOL_ID
+  if (!clientId || !poolId) return { success: false, error: 'Auth is not configured.' }
+  const region = poolId.split('_')[0]
+  try {
+    const response = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AWSCognitoIdentityProviderService.ConfirmForgotPassword',
+      },
+      body: JSON.stringify({ ClientId: clientId, Username: email, ConfirmationCode: code, Password: newPassword }),
+    })
+    if (!response.ok) {
+      const data = await response.json()
+      const code2: string = data.__type ?? ''
+      if (code2 === 'CodeMismatchException') return { success: false, error: 'Incorrect code. Check your email and try again.' }
+      if (code2 === 'ExpiredCodeException') return { success: false, error: 'Code expired. Request a new one.' }
+      if (code2 === 'InvalidPasswordException') return { success: false, error: data.message ?? 'Password does not meet requirements.' }
+      return { success: false, error: 'Could not reset password. Try again.' }
+    }
+    return { success: true }
+  } catch {
+    return { success: false, error: 'Connection error. Check your internet and try again.' }
+  }
+}
+
 export function logoutFromCognito(): void {
   clearAdminToken()
   const domain = import.meta.env.VITE_COGNITO_DOMAIN
