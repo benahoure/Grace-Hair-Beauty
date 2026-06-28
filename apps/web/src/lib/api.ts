@@ -5,7 +5,7 @@ import {
   mockReviews,
   mockServices,
 } from './mockData'
-import { getAdminToken } from './auth'
+import { clearAdminToken, getAdminToken } from './auth'
 import type {
   AdminAppointment,
   AdminContactMessage,
@@ -84,6 +84,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearAdminToken()
+      window.location.href = '/admin'
+      return new Promise(() => {}) as Promise<T>
+    }
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody
     throw new ApiRequestError(response.status, body)
   }
