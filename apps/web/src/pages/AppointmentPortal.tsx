@@ -328,7 +328,7 @@ export function AppointmentPortal() {
   if (query.isPending) {
     return (
       <>
-        <PageMeta title="Your Appointment | Grace Hair Beauty" description="" canonical="" />
+        <PageMeta title="Your Appointment | Grace Hair Beauty" description="" canonical="" noIndex={true} />
         <div className="flex min-h-[60vh] items-center justify-center">
           <div className="text-center">
             <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-cream-border border-t-gold-dark" />
@@ -344,7 +344,7 @@ export function AppointmentPortal() {
     const is404 = query.error instanceof ApiRequestError && query.error.status === 404
     return (
       <>
-        <PageMeta title="Appointment Not Found | Grace Hair Beauty" description="" canonical="" />
+        <PageMeta title="Appointment Not Found | Grace Hair Beauty" description="" canonical="" noIndex={true} />
         <div className="section-pad container-page">
           <div className="mx-auto max-w-md rounded-2xl border border-cream-border bg-paper p-10 text-center shadow-soft">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error/10">
@@ -400,6 +400,7 @@ export function AppointmentPortal() {
         title={`Your Appointment — ${apt.serviceName} | Grace Hair Beauty`}
         description="View and manage your Grace Hair Beauty appointment."
         canonical=""
+        noIndex={true}
       />
 
       {showReschedule && (

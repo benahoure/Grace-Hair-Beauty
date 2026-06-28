@@ -138,8 +138,8 @@ export function Services() {
   return (
     <>
       <PageMeta
-        title="Hair Braiding Services | Grace Hair Beauty"
-        description="African braids, knotless braids, sew-in weaves, silk press, natural styles, men's hairstyles, and kids braids."
+        title="Hair Braiding Services in Indianapolis | Grace Hair Beauty"
+        description="African braids, knotless braids, box braids, cornrows, sew-in weaves, silk press, natural styles, and kids braids in Indianapolis, IN."
         canonical="https://gracehairsbeauty.com/services"
       />
       <Helmet>

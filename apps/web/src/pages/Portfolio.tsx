@@ -62,7 +62,7 @@ export function Portfolio() {
   return (
     <>
       <PageMeta
-        title="Hair Gallery | Braids, Natural Styles & More"
+        title="Hair Gallery | Grace Hair Beauty — Indianapolis Braiding Studio"
         description="Browse client style categories including knotless braids, sew-in, natural hairstyles, kids styles, and men's styles."
         canonical="https://gracehairsbeauty.com/gallery"
       />

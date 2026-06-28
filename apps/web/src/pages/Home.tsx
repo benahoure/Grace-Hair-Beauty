@@ -53,7 +53,7 @@ export function Home() {
   return (
     <>
       <PageMeta
-        title="Grace Hair Beauty | African Braiding & Beauty Salon"
+        title="Grace Hair Beauty | African Braiding & Protective Styles in Indianapolis, IN"
         description="Expert African braiding, knotless braids, protective styles, natural hair, sew-in, and silk press services in Indianapolis."
         canonical="https://gracehairsbeauty.com/"
       />
