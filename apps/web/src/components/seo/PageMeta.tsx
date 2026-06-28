@@ -8,14 +8,16 @@ interface PageMetaProps {
   canonical: string
   ogType?: string
   ogImage?: string
+  noIndex?: boolean
 }
 
-export function PageMeta({ title, description, canonical, ogType = 'website', ogImage = DEFAULT_OG_IMAGE }: PageMetaProps) {
+export function PageMeta({ title, description, canonical, ogType = 'website', ogImage = DEFAULT_OG_IMAGE, noIndex = false }: PageMetaProps) {
   return (
     <Helmet>
       <title>{title}</title>
       <meta name="description" content={description} />
       <link rel="canonical" href={canonical} />
+      {noIndex && <meta name="robots" content="noindex,nofollow" />}
       <meta property="og:type" content={ogType} />
       <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />

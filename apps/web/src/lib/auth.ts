@@ -122,6 +122,7 @@ export async function forgotPasswordRequest(email: string): Promise<{ success: t
       const code: string = data.__type ?? ''
       if (code === 'UserNotFoundException') return { success: false, error: 'No account found with that email.' }
       if (code === 'LimitExceededException') return { success: false, error: 'Too many attempts. Please wait and try again.' }
+      if (code === 'InvalidParameterException') return { success: false, error: 'This account is not yet set up for password reset. Contact your administrator.' }
       return { success: false, error: 'Could not send reset code. Try again.' }
     }
     return { success: true }

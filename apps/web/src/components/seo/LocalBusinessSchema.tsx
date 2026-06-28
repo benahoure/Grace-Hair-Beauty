@@ -2,11 +2,32 @@ import { Helmet } from 'react-helmet-async'
 
 import type { BusinessSettings } from '../../types'
 
+const DAY_NAMES: Record<keyof BusinessSettings['hours'], string> = {
+  monday:    'Monday',
+  tuesday:   'Tuesday',
+  wednesday: 'Wednesday',
+  thursday:  'Thursday',
+  friday:    'Friday',
+  saturday:  'Saturday',
+  sunday:    'Sunday',
+}
+
 interface LocalBusinessSchemaProps {
   settings: BusinessSettings
 }
 
 export function LocalBusinessSchema({ settings }: LocalBusinessSchemaProps) {
+  const openingHoursSpecification = (
+    Object.entries(settings.hours) as [keyof BusinessSettings['hours'], { open: string; close: string; closed: boolean }][]
+  )
+    .filter(([, day]) => !day.closed)
+    .map(([key, day]) => ({
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: DAY_NAMES[key],
+      opens: day.open,
+      closes: day.close,
+    }))
+
   const schema = {
     '@context': 'https://schema.org',
     '@type': 'HairSalon',
@@ -14,6 +35,7 @@ export function LocalBusinessSchema({ settings }: LocalBusinessSchemaProps) {
     url: 'https://gracehairsbeauty.com',
     telephone: settings.phone,
     email: settings.email,
+    image: 'https://gracehairsbeauty.com/brand/grace-hair-beauty-official-logo.png',
     address: {
       '@type': 'PostalAddress',
       streetAddress: settings.address.street,
@@ -22,14 +44,7 @@ export function LocalBusinessSchema({ settings }: LocalBusinessSchemaProps) {
       postalCode: settings.address.zip,
       addressCountry: 'US',
     },
-    openingHoursSpecification: [
-      {
-        '@type': 'OpeningHoursSpecification',
-        dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-        opens: settings.hours.monday.open,
-        closes: settings.hours.monday.close,
-      },
-    ],
+    openingHoursSpecification,
     priceRange: '$$',
     currenciesAccepted: 'USD',
     description:

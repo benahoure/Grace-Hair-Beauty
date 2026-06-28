@@ -17,10 +17,10 @@ export const defaultBusinessSettings: BusinessSettings = {
   phone: '+13178503001',
   email: 'plbahoure2993@gmail.com',
   address: {
-    street: '955 Baden Manor Dr',
+    street: '5401 S East Street Suite 106',
     city: 'Indianapolis',
     state: 'IN',
-    zip: '46217',
+    zip: '46227',
   },
   hours: {
     monday: hours,

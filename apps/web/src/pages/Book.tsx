@@ -15,7 +15,7 @@ export function Book() {
     <>
       <PageMeta
         title="Book a Hair Appointment | Grace Hair Beauty"
-        description="Book your braiding, protective styling, natural hair, sew-in, silk press, or beauty appointment online."
+        description="Book your braiding, protective styling, sew-in, silk press, or natural hair appointment at Grace Hair Beauty in Indianapolis, IN."
         canonical="https://gracehairsbeauty.com/book"
       />
 
