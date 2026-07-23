@@ -71,8 +71,8 @@ class PaymentIntentRequest(HtmlStrippingModelMixin, BaseModel):
     @classmethod
     def validate_business_hours(cls, value: str) -> str:
         hour = int(value.split(":")[0])
-        if not 8 <= hour <= 20:
-            raise ValueError("Preferred time must be between 8:00 AM and 8:00 PM.")
+        if not 8 <= hour <= 17:
+            raise ValueError("Preferred time must be between 8:00 AM and 5:00 PM.")
         return value
 
     @field_validator("policyAccepted", mode="after")
@@ -107,8 +107,8 @@ class RescheduleRequest(BaseModel):
     @classmethod
     def validate_business_hours(cls, value: str) -> str:
         hour = int(value.split(":")[0])
-        if not 8 <= hour <= 20:
-            raise ValueError("Preferred time must be between 8:00 AM and 8:00 PM.")
+        if not 8 <= hour <= 17:
+            raise ValueError("Preferred time must be between 8:00 AM and 5:00 PM.")
         return value
 
 

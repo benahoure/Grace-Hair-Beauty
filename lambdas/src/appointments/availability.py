@@ -3,11 +3,12 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from boto3.dynamodb.conditions import Attr, ConditionBase
+from boto3.dynamodb.conditions import Attr
 
 from appointments.models import DEFAULT_DURATION_MINUTES
+from appointments.scheduling import collect_windows, has_capacity, time_to_minutes
 from common.config import get_config
-from common.dynamo import get_item, scan_items
+from common.dynamo import get_item
 from common.ids import utc_now_epoch
 
 SALON_TZ = ZoneInfo("America/Chicago")
@@ -17,6 +18,9 @@ DEFAULT_HOURS = {
     day: {"open": "09:00", "close": "21:00", "closed": False}
     for day in DAY_NAMES
 }
+# Latest hour a client may start a booking (5:00 PM). A long service may run past
+# closing — the salon simply finishes that client.
+LATEST_START_HOUR = 17
 
 
 def _get_settings() -> tuple[dict, set[str]]:
@@ -39,16 +43,12 @@ def _get_service_duration(service_id: str) -> int:
     return DEFAULT_DURATION_MINUTES
 
 
-def _time_str_to_minutes(time_str: str) -> int:
-    """Convert 'HH:MM' to total minutes since midnight."""
-    parts = time_str.split(":")
-    return int(parts[0]) * 60 + (int(parts[1]) if len(parts) > 1 else 0)
-
-
-def _generate_slots(day_hours: dict, duration_minutes: int) -> list[str]:
+def _generate_slots(day_hours: dict) -> list[str]:
     """
-    Return HH:MM slot strings where the service can start and finish within business hours.
-    Last valid start = close_time - duration_minutes.
+    Return HH:MM slot strings, on the hour, from opening until the latest allowed
+    start (5:00 PM). Duration no longer limits the last slot — a long service may
+    finish after closing. Slots stop at LATEST_START_HOUR or one hour before an
+    early close, whichever comes first.
     """
     if day_hours.get("closed", True):
         return []
@@ -57,67 +57,8 @@ def _generate_slots(day_hours: dict, duration_minutes: int) -> list[str]:
         close_hour = int(str(day_hours.get("close", "21:00")).split(":")[0])
     except (ValueError, AttributeError):
         return []
-    max_start_minutes = close_hour * 60 - duration_minutes
-    return [
-        f"{h:02d}:00"
-        for h in range(open_hour, close_hour)
-        if h * 60 <= max_start_minutes
-    ]
-
-
-def _overlaps(slot_start_min: int, slot_duration_min: int, windows: list[tuple[int, int]]) -> bool:
-    """
-    Returns True if [slot_start, slot_start + slot_duration) overlaps with any window in the list.
-    Each window is (existing_start_min, existing_end_min).
-    Overlap condition: slot_start < existing_end AND existing_start < slot_end
-    """
-    slot_end_min = slot_start_min + slot_duration_min
-    return any(
-        slot_start_min < ex_end and ex_start < slot_end_min
-        for ex_start, ex_end in windows
-    )
-
-
-def _collect_taken(
-    table_name: str,
-    filter_expr: ConditionBase,
-    now_epoch: int,
-) -> dict[str, list[tuple[int, int]]]:
-    """
-    Scan active appointments matching filter_expr.
-    Returns {date: [(start_minutes, end_minutes), ...]} for every active appointment.
-    Uses serviceDurationMinutes stored on the appointment; falls back to DEFAULT_DURATION_MINUTES.
-    """
-    taken: dict[str, list[tuple[int, int]]] = {}
-    cursor = None
-    for _ in range(20):
-        items, cursor = scan_items(table_name, filter_expression=filter_expr, limit=100, cursor=cursor)
-        for item in items:
-            status   = item.get("status", "")
-            date_str = item.get("preferredDate", "")
-            time_str = item.get("preferredTime", "")
-            if not date_str or not time_str:
-                continue
-
-            active = False
-            if status == "pending_payment":
-                expires_at = item.get("expiresAt")
-                if expires_at is not None and int(expires_at) > now_epoch:
-                    active = True
-            elif status in {"pending", "confirmed"}:
-                active = True
-
-            if not active:
-                continue
-
-            start_min    = _time_str_to_minutes(time_str)
-            appt_duration = int(item.get("serviceDurationMinutes", DEFAULT_DURATION_MINUTES))
-            end_min      = start_min + appt_duration
-            taken.setdefault(date_str, []).append((start_min, end_min))
-
-        if not cursor:
-            break
-    return taken
+    last_start_hour = min(LATEST_START_HOUR, close_hour - 1)
+    return [f"{h:02d}:00" for h in range(open_hour, last_start_hour + 1)]
 
 
 def _format_time_12h(hour: int, minute: int = 0) -> str:
@@ -135,7 +76,6 @@ def _slot_is_within_24hr(slot_str: str, date: dt.date, cutoff: dt.datetime) -> b
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def get_month_availability(year: int, month: int, service_id: str | None = None) -> dict:
-    config = get_config()
     hours, blocked_dates = _get_settings()
     now_epoch    = utc_now_epoch()
     now_chicago  = dt.datetime.now(SALON_TZ)
@@ -147,10 +87,9 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
     first_day = dt.date(year, month, 1)
     last_day  = (dt.date(year + 1, 1, 1) if month == 12 else dt.date(year, month + 1, 1)) - dt.timedelta(days=1)
 
-    taken_by_date = _collect_taken(
-        config.table_appointments,
+    taken_by_date = collect_windows(
         Attr("preferredDate").between(first_day.isoformat(), last_day.isoformat()),
-        now_epoch,
+        now_epoch=now_epoch,
     )
 
     dates_result = []
@@ -170,7 +109,7 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
             status          = "closed"
             available_count = 0
         else:
-            all_slots     = _generate_slots(day_hours, duration_minutes)
+            all_slots     = _generate_slots(day_hours)
             taken_windows = taken_by_date.get(date_str, [])
 
             available_slots   = []
@@ -178,8 +117,8 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
             booked_count      = 0
 
             for slot_str in all_slots:
-                slot_start_min = _time_str_to_minutes(slot_str)
-                if _overlaps(slot_start_min, duration_minutes, taken_windows):
+                slot_start_min = time_to_minutes(slot_str)
+                if not has_capacity(taken_windows, slot_start_min, slot_start_min + duration_minutes):
                     booked_count += 1
                     continue
                 slot_dt = dt.datetime(current.year, current.month, current.day,
@@ -215,7 +154,6 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
 
 
 def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
-    config = get_config()
     hours, blocked_dates = _get_settings()
     now_epoch    = utc_now_epoch()
     now_chicago  = dt.datetime.now(SALON_TZ)
@@ -237,21 +175,20 @@ def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
 
     day_name  = DAY_NAMES[date.weekday()]
     day_hours = hours.get(day_name, {"closed": True})
-    all_slots = _generate_slots(day_hours, duration_minutes)
+    all_slots = _generate_slots(day_hours)
     if not all_slots:
         return {"date": date_str, "timezone": "America/Chicago", "slots": []}
 
-    taken_by_date = _collect_taken(
-        config.table_appointments,
+    taken_by_date = collect_windows(
         Attr("preferredDate").eq(date_str),
-        now_epoch,
+        now_epoch=now_epoch,
     )
     taken_windows = taken_by_date.get(date_str, [])
 
     slots_result = []
     for slot_str in all_slots:
-        slot_start_min = _time_str_to_minutes(slot_str)
-        if _overlaps(slot_start_min, duration_minutes, taken_windows):
+        slot_start_min = time_to_minutes(slot_str)
+        if not has_capacity(taken_windows, slot_start_min, slot_start_min + duration_minutes):
             continue
         h       = slot_start_min // 60
         slot_dt = dt.datetime(date.year, date.month, date.day, h, 0, tzinfo=SALON_TZ)
