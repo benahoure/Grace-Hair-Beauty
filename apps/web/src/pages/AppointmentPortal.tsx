@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { PageMeta } from '../components/seo/PageMeta'
 import { api, ApiRequestError } from '../lib/api'
-import { formatPhone, formatPrice, shortDate } from '../lib/format'
+import { formatPhone, formatPrice, shortDate, SALON_TZ_LABEL } from '../lib/format'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -163,6 +163,10 @@ function RescheduleModal({
               onChange={(e) => { setNewTime(e.target.value); setApiError(null) }}
               className="mt-2"
             />
+            <p className="mt-1.5 flex items-center gap-1 text-[0.62rem] text-mocha/55">
+              <Clock size={10} className="text-gold-dark/70" aria-hidden="true" />
+              Enter the time in {SALON_TZ_LABEL}
+            </p>
           </div>
 
           {apiError && (
@@ -459,6 +463,7 @@ export function AppointmentPortal() {
                 <Clock size={16} className="text-gold-dark" />
                 <p className="text-[0.58rem] font-bold uppercase tracking-wider text-mocha/50">Time</p>
                 <p className="text-sm font-semibold text-espresso">{formatBookingTime(apt.preferredTime)}</p>
+                <p className="text-[0.55rem] text-mocha/40">{SALON_TZ_LABEL}</p>
               </div>
               <div className="flex flex-col items-center gap-1 py-5 px-4 text-center">
                 <Check size={16} className="text-gold-dark" />

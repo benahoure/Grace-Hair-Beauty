@@ -1,14 +1,14 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { loadStripe } from '@stripe/stripe-js'
-import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, Clock, ExternalLink } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { z } from 'zod'
 
 import { ApiRequestError, api } from '../../lib/api'
-import { formatDuration, formatPrice } from '../../lib/format'
+import { formatDuration, formatPrice, SALON_TZ_LABEL } from '../../lib/format'
 import { mockPortfolio } from '../../lib/mockData'
 import { bookingSchema } from '../../lib/validators'
 import type { AppointmentRequest, AvailabilityDate, AvailabilitySlot, ServiceCategory } from '../../types'
@@ -778,6 +778,10 @@ export function BookingForm() {
               ) : null,
             )}
           </dl>
+          <p className="mt-4 flex items-center justify-center gap-1.5 text-[0.65rem] text-mocha/55">
+            <Clock size={11} className="text-gold-dark/70" aria-hidden="true" />
+            All times are {SALON_TZ_LABEL}.
+          </p>
         </motion.div>
 
         <div className="border-t border-cream-border bg-cream-deep/40 px-8 py-7 text-center">
@@ -1145,6 +1149,10 @@ export function BookingForm() {
                 <p className="mt-0.5 text-sm text-mocha/65">
                   {formatBookingDate(formData.preferredDate)}
                 </p>
+                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold-pale/25 px-3 py-1 text-[0.68rem] font-medium text-mocha">
+                  <Clock size={12} className="shrink-0 text-gold-dark" aria-hidden="true" />
+                  <span>All times shown in <span className="font-semibold text-espresso">{SALON_TZ_LABEL}</span></span>
+                </div>
                 <div className="mt-3">
                   <TimeSlotPicker
                     slots={dateSlotsQuery.data?.slots}

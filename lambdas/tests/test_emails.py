@@ -619,7 +619,7 @@ class TestFormatHelpers:
 
     def test_portal_format_time_pm(self):
         from appointments.portal_service import _format_time
-        assert _format_time("16:30") == "4:30 PM"
+        assert _format_time("16:30") == "4:30 PM ET"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ from common.config import get_config
 from common.dynamo import get_item
 from common.ids import utc_now_epoch
 
-SALON_TZ = ZoneInfo("America/Chicago")
+SALON_TZ = ZoneInfo("America/Indiana/Indianapolis")
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 SETTINGS_KEY = {"settingId": "BUSINESS#SETTINGS", "version": "v1"}
 DEFAULT_HOURS = {
@@ -78,9 +78,9 @@ def _slot_is_within_24hr(slot_str: str, date: dt.date, cutoff: dt.datetime) -> b
 def get_month_availability(year: int, month: int, service_id: str | None = None) -> dict:
     hours, blocked_dates = _get_settings()
     now_epoch    = utc_now_epoch()
-    now_chicago  = dt.datetime.now(SALON_TZ)
-    today_chicago = now_chicago.date()
-    cutoff_24hr  = now_chicago + dt.timedelta(hours=24)
+    now_salon  = dt.datetime.now(SALON_TZ)
+    today_salon = now_salon.date()
+    cutoff_24hr  = now_salon + dt.timedelta(hours=24)
 
     duration_minutes = _get_service_duration(service_id) if service_id else DEFAULT_DURATION_MINUTES
 
@@ -99,7 +99,7 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
         day_name  = DAY_NAMES[current.weekday()]
         day_hours = hours.get(day_name, {"closed": True})
 
-        if current <= today_chicago:
+        if current <= today_salon:
             status          = "past"
             available_count = 0
         elif date_str in blocked_dates:
@@ -148,7 +148,7 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
 
     return {
         "month":    f"{year}-{month:02d}",
-        "timezone": "America/Chicago",
+        "timezone": "America/Indiana/Indianapolis",
         "dates":    dates_result,
     }
 
@@ -156,28 +156,28 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
 def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
     hours, blocked_dates = _get_settings()
     now_epoch    = utc_now_epoch()
-    now_chicago  = dt.datetime.now(SALON_TZ)
-    today_chicago = now_chicago.date()
-    cutoff_24hr  = now_chicago + dt.timedelta(hours=24)
+    now_salon  = dt.datetime.now(SALON_TZ)
+    today_salon = now_salon.date()
+    cutoff_24hr  = now_salon + dt.timedelta(hours=24)
 
     duration_minutes = _get_service_duration(service_id) if service_id else DEFAULT_DURATION_MINUTES
 
     try:
         date = dt.date.fromisoformat(date_str)
     except ValueError:
-        return {"date": date_str, "timezone": "America/Chicago", "slots": []}
+        return {"date": date_str, "timezone": "America/Indiana/Indianapolis", "slots": []}
 
-    if date <= today_chicago:
-        return {"date": date_str, "timezone": "America/Chicago", "slots": []}
+    if date <= today_salon:
+        return {"date": date_str, "timezone": "America/Indiana/Indianapolis", "slots": []}
 
     if date_str in blocked_dates:
-        return {"date": date_str, "timezone": "America/Chicago", "slots": []}
+        return {"date": date_str, "timezone": "America/Indiana/Indianapolis", "slots": []}
 
     day_name  = DAY_NAMES[date.weekday()]
     day_hours = hours.get(day_name, {"closed": True})
     all_slots = _generate_slots(day_hours)
     if not all_slots:
-        return {"date": date_str, "timezone": "America/Chicago", "slots": []}
+        return {"date": date_str, "timezone": "America/Indiana/Indianapolis", "slots": []}
 
     taken_by_date = collect_windows(
         Attr("preferredDate").eq(date_str),
@@ -202,6 +202,6 @@ def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
 
     return {
         "date":     date_str,
-        "timezone": "America/Chicago",
+        "timezone": "America/Indiana/Indianapolis",
         "slots":    slots_result,
     }

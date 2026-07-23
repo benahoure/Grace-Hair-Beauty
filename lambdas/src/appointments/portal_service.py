@@ -36,10 +36,11 @@ def _format_date(value: str) -> str:
 
 
 def _format_time(value: str) -> str:
+    # Times are salon-local (Indianapolis / Eastern); label them so out-of-state clients don't misread.
     hour, minute = (int(p) for p in value.split(":"))
     suffix = "AM" if hour < 12 else "PM"
     display_hour = hour % 12 or 12
-    return f"{display_hour}:{minute:02d} {suffix}"
+    return f"{display_hour}:{minute:02d} {suffix} ET"
 
 
 def _slot_is_available_for_reschedule(
@@ -114,7 +115,7 @@ def portal_reschedule(token: str, req: RescheduleRequest) -> dict:
     old_date = appt["preferredDate"]
     old_time = appt["preferredTime"]
 
-    # Backend 24-hour enforcement using America/Chicago
+    # Backend 24-hour enforcement using America/Indiana/Indianapolis (Eastern)
     if is_within_24hrs(old_date, old_time):
         raise PermissionError(WITHIN_24H_MESSAGE)
 
@@ -213,7 +214,7 @@ def portal_cancel(token: str) -> dict:
     if status not in {"pending", "confirmed"}:
         raise ValueError(f"Appointment cannot be cancelled (status: {status}).")
 
-    # Backend 24-hour enforcement using America/Chicago
+    # Backend 24-hour enforcement using America/Indiana/Indianapolis (Eastern)
     if is_within_24hrs(appt["preferredDate"], appt["preferredTime"]):
         raise PermissionError(WITHIN_24H_MESSAGE)
 
