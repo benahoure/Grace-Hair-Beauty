@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from common.validators import HtmlStrippingModelMixin, normalize_us_phone
 
-SALON_TZ = ZoneInfo("America/Chicago")
+SALON_TZ = ZoneInfo("America/Indiana/Indianapolis")  # Indianapolis is Eastern Time (EST/EDT)
 DEPOSIT_AMOUNT_CENTS = 3000
 POLICY_VERSION = "2026-05-31"
 DEFAULT_DURATION_MINUTES = 180  # fallback for services without an explicit duration
@@ -21,18 +21,18 @@ def _salon_today() -> dt.date:
     return dt.datetime.now(SALON_TZ).date()
 
 
-def appointment_datetime_chicago(preferred_date: str, preferred_time: str) -> dt.datetime:
-    """Combine stored date + time strings into a timezone-aware datetime in Chicago time."""
+def appointment_datetime_salon(preferred_date: str, preferred_time: str) -> dt.datetime:
+    """Combine stored date + time strings into a timezone-aware datetime in salon-local (Indianapolis/Eastern) time."""
     d = dt.date.fromisoformat(preferred_date)
     hour, minute = (int(p) for p in preferred_time.split(":"))
     return dt.datetime(d.year, d.month, d.day, hour, minute, tzinfo=SALON_TZ)
 
 
 def is_within_24hrs(preferred_date: str, preferred_time: str) -> bool:
-    """Backend enforcement: true when appointment starts within 24 hours from now (Chicago TZ)."""
-    appt_dt = appointment_datetime_chicago(preferred_date, preferred_time)
-    now_chicago = dt.datetime.now(SALON_TZ)
-    return (appt_dt - now_chicago).total_seconds() < 86_400
+    """Backend enforcement: true when appointment starts within 24 hours from now (Indianapolis/Eastern TZ)."""
+    appt_dt = appointment_datetime_salon(preferred_date, preferred_time)
+    now_salon = dt.datetime.now(SALON_TZ)
+    return (appt_dt - now_salon).total_seconds() < 86_400
 
 
 class PaymentIntentRequest(HtmlStrippingModelMixin, BaseModel):

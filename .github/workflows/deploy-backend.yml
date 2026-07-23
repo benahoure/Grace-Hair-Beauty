@@ -65,7 +65,9 @@ jobs:
   deploy-dev:
     name: Deploy to dev
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >
+      github.event_name == 'push' && github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
     runs-on: ubuntu-latest
     environment: development
     permissions:

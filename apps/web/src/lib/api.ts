@@ -152,12 +152,12 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
         else status = 'available'
         dates.push({ date: dateStr, status, availableSlots: status === 'available' ? 4 : 0 })
       }
-      return { month: monthParam, timezone: 'America/Chicago', dates } as T
+      return { month: monthParam, timezone: 'America/Indiana/Indianapolis', dates } as T
     }
     if (dateParam) {
       const dateObj = new Date(dateParam + 'T00:00:00')
       const dow = dateObj.getDay()
-      if (dow === 0) return { date: dateParam, timezone: 'America/Chicago', slots: [] } as T
+      if (dow === 0) return { date: dateParam, timezone: 'America/Indiana/Indianapolis', slots: [] } as T
       const rawHours = [9,10,11,12,13,14,15,16,17]  // hourly, latest start 5pm
       const slots = rawHours.flatMap((h) => {
         const slotDt = new Date(dateParam + `T${String(h).padStart(2,'0')}:00:00`)
@@ -166,9 +166,9 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
         const display = h % 12 || 12
         return [{ time: `${display}:00 ${suffix}`, datetime: slotDt.toISOString(), available: true }]
       })
-      return { date: dateParam, timezone: 'America/Chicago', slots } as T
+      return { date: dateParam, timezone: 'America/Indiana/Indianapolis', slots } as T
     }
-    return { date: '', timezone: 'America/Chicago', slots: [] } as T
+    return { date: '', timezone: 'America/Indiana/Indianapolis', slots: [] } as T
   }
 
   if (path === '/appointments/payment-intent' && method === 'POST') {

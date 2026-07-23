@@ -1,5 +1,12 @@
 import type { BusinessSettings, DayName } from '../types'
 
+/**
+ * The salon operates on Indianapolis local time (Eastern). All booking times are
+ * shown in this zone regardless of where the visitor is, so out-of-state clients
+ * don't misread them. Keep this label consistent across every booking surface.
+ */
+export const SALON_TZ_LABEL = 'Indianapolis time (ET)'
+
 const days: DayName[] = [
   'monday',
   'tuesday',

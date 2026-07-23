@@ -31,10 +31,11 @@ def _format_date(value: dt.date | str) -> str:
 
 
 def _format_time(value: str) -> str:
+    # Times are salon-local (Indianapolis / Eastern); label them so out-of-state clients don't misread.
     hour, minute = (int(p) for p in value.split(":"))
     suffix = "AM" if hour < 12 else "PM"
     display_hour = hour % 12 or 12
-    return f"{display_hour}:{minute:02d} {suffix}"
+    return f"{display_hour}:{minute:02d} {suffix} ET"
 
 
 def _remaining_balance_cents(service_price_cents: int) -> int:
