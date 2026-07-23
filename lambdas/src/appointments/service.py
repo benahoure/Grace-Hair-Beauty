@@ -11,12 +11,13 @@ from appointments.models import (
     ConfirmAppointmentRequest,
     PaymentIntentRequest,
 )
+from appointments.scheduling import collect_windows, has_capacity, time_to_minutes
 from common.config import get_config
-from common.dynamo import get_item, put_item, scan_items, update_item_with_removes
+from common.dynamo import get_item, put_item, update_item_with_removes
 from common.email_layout import details_table as _details_table
 from common.email_layout import email_layout as _email_layout
 from common.errors import NotFoundError
-from common.ids import new_appointment_token, new_id, ttl_days, ttl_minutes, utc_now, utc_now_epoch
+from common.ids import new_appointment_token, new_id, ttl_days, ttl_minutes, utc_now
 from common.logger import logger
 from common.security import decrypt_pii, encrypt_pii
 from common.ses_client import best_effort_send_email, notify_admin
@@ -47,55 +48,21 @@ def _slot_is_available(
     exclude_id: str | None = None,
 ) -> bool:
     """
-    Returns True when the requested date+time window has no conflict with any active booking.
+    Returns True when the requested window still has a free braider.
 
-    A conflict exists when the new appointment's time window [start, start+duration) overlaps
-    with an existing active appointment's window [ex_start, ex_start+ex_duration).
-    Overlap condition: new_start < ex_end AND ex_start < new_end.
+    The salon runs BRAIDER_COUNT braiders in parallel, so up to that many
+    appointments may overlap. The slot is available while fewer than BRAIDER_COUNT
+    active bookings run at any instant of [start, start+duration). Duration is
+    honoured via the appointment's serviceDurationMinutes.
 
     Active = pending_payment (not expired), pending, or confirmed.
     Cancelled / completed / no_show are ignored.
     """
-    now_epoch = utc_now_epoch()
-    config    = get_config()
-
-    parts     = preferred_time.split(":")
-    new_start = int(parts[0]) * 60 + (int(parts[1]) if len(parts) > 1 else 0)
-    new_end   = new_start + duration_minutes
-
-    items, _ = scan_items(
-        config.table_appointments,
-        filter_expression=Attr("preferredDate").eq(preferred_date),
-        limit=50,
-    )
-    for item in items:
-        if exclude_id and item.get("appointmentId") == exclude_id:
-            continue
-
-        status = item.get("status", "")
-        active = False
-        if status == "pending_payment":
-            expires_at = item.get("expiresAt")
-            if expires_at is not None and int(expires_at) > now_epoch:
-                active = True
-        elif status in {"pending", "confirmed"}:
-            active = True
-
-        if not active:
-            continue
-
-        existing_time = item.get("preferredTime", "")
-        if not existing_time:
-            continue
-        ex_parts  = existing_time.split(":")
-        ex_start  = int(ex_parts[0]) * 60 + (int(ex_parts[1]) if len(ex_parts) > 1 else 0)
-        ex_dur    = int(item.get("serviceDurationMinutes", DEFAULT_DURATION_MINUTES))
-        ex_end    = ex_start + ex_dur
-
-        if new_start < ex_end and ex_start < new_end:
-            return False
-
-    return True
+    windows = collect_windows(
+        Attr("preferredDate").eq(preferred_date), exclude_id=exclude_id
+    ).get(preferred_date, [])
+    new_start = time_to_minutes(preferred_time)
+    return has_capacity(windows, new_start, new_start + duration_minutes)
 
 
 def _confirmation_email_html(

@@ -158,7 +158,7 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
       const dateObj = new Date(dateParam + 'T00:00:00')
       const dow = dateObj.getDay()
       if (dow === 0) return { date: dateParam, timezone: 'America/Chicago', slots: [] } as T
-      const rawHours = [9,10,11,12,13,14,15,16,17,18,19]
+      const rawHours = [9,10,11,12,13,14,15,16,17]  // hourly, latest start 5pm
       const slots = rawHours.flatMap((h) => {
         const slotDt = new Date(dateParam + `T${String(h).padStart(2,'0')}:00:00`)
         if (slotDt <= cutoff24) return []
