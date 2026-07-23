@@ -533,7 +533,10 @@ export function BookingForm() {
     queryKey: ['avail-month', monthKey, formData.serviceId],
     queryFn: () => api.getMonthAvailability({ month: monthKey, serviceId: formData.serviceId || undefined }),
     enabled: step >= 3,
-    staleTime: 60_000,
+    // Availability shifts as others book/reschedule/cancel — never serve a cached view,
+    // so a slot freed by a reschedule shows up immediately instead of looking still-booked.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
   // Date slots: re-fetch when serviceId or date changes
@@ -541,7 +544,8 @@ export function BookingForm() {
     queryKey: ['avail-slots', formData.preferredDate, formData.serviceId],
     queryFn: () => api.getDateSlots({ date: formData.preferredDate, serviceId: formData.serviceId || undefined }),
     enabled: step >= 3 && Boolean(formData.preferredDate),
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 
   useEffect(() => {
