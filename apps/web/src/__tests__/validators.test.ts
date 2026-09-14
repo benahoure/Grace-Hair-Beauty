@@ -30,6 +30,21 @@ describe('client validation', () => {
     })
   })
 
+  it('accepts a same-day booking date', () => {
+    const today = new Date()
+    const value = bookingSchema.safeParse({
+      serviceId: 'svc-knotless-braids',
+      clientName: 'Amara Test',
+      clientEmail: 'amara@example.com',
+      clientPhone: '3175550123',
+      preferredDate: today.toISOString().slice(0, 10),
+      preferredTime: '10:00',
+      notes: '',
+      honeypot: '',
+    })
+    expect(value.success).toBe(true)
+  })
+
   it('calculates tomorrow in the salon timezone instead of UTC', () => {
     const utcAfterMidnight = new Date('2026-05-28T00:30:00Z')
 

@@ -151,7 +151,7 @@ export interface ReviewSubmission {
 export type DepositStatus = 'paid' | 'refund_pending' | 'refunded' | 'forfeited' | 'transferred' | 'applied_to_balance'
 export type AppointmentStatus = 'pending_payment' | 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'no_show'
 
-export type AvailabilityDateStatus = 'available' | 'fully_booked' | 'closed' | 'past' | 'blocked_24hr' | 'blocked'
+export type AvailabilityDateStatus = 'available' | 'fully_booked' | 'closed' | 'past' | 'blocked'
 
 export interface AvailabilityDate {
   date: string
