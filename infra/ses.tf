@@ -21,12 +21,23 @@ resource "aws_ses_domain_mail_from" "this" {
   mail_from_domain = "mail.${var.domain_name}"
 }
 
+locals {
+  # Google Search Console domain verification is issued per-domain (the prod
+  # apex), so it's meaningless on other environments' TXT records.
+  spf_records = var.env == "prod" ? [
+    "v=spf1 include:amazonses.com ~all",
+    "google-site-verification=v5ZGvUtVSdBYjB5Kqd9m52G3KdvSC-Ds9LUT65XqeDU",
+    ] : [
+    "v=spf1 include:amazonses.com ~all",
+  ]
+}
+
 resource "aws_route53_record" "spf" {
   zone_id         = data.aws_route53_zone.this.zone_id
   name            = var.domain_name
   type            = "TXT"
   ttl             = 600
-  records         = ["v=spf1 include:amazonses.com ~all"]
+  records         = local.spf_records
   allow_overwrite = true
 }
 

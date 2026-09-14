@@ -4,7 +4,7 @@ import datetime as dt
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from common.validators import HtmlStrippingModelMixin, normalize_us_phone
 
@@ -61,8 +61,8 @@ class PaymentIntentRequest(HtmlStrippingModelMixin, BaseModel):
         if value is None:
             return value
         today = _salon_today()
-        if value <= today:
-            raise ValueError("Date must be at least 1 day in the future.")
+        if value < today:
+            raise ValueError("Date must be today or in the future.")
         if value > today + dt.timedelta(days=90):
             raise ValueError("Date must be within the next 90 days.")
         return value
@@ -81,6 +81,14 @@ class PaymentIntentRequest(HtmlStrippingModelMixin, BaseModel):
         if not value:
             raise ValueError("You must accept the booking policy to continue.")
         return value
+
+    @model_validator(mode="after")
+    def validate_same_day_time_not_passed(self) -> PaymentIntentRequest:
+        if self.preferredDate == _salon_today():
+            requested = appointment_datetime_salon(self.preferredDate.isoformat(), self.preferredTime)
+            if requested <= dt.datetime.now(SALON_TZ):
+                raise ValueError("That time has already passed today. Please choose a later time.")
+        return self
 
 
 class ConfirmAppointmentRequest(BaseModel):

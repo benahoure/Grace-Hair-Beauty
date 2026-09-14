@@ -67,12 +67,6 @@ def _format_time_12h(hour: int, minute: int = 0) -> str:
     return f"{display}:{minute:02d} {suffix}"
 
 
-def _slot_is_within_24hr(slot_str: str, date: dt.date, cutoff: dt.datetime) -> bool:
-    h       = int(slot_str.split(":")[0])
-    slot_dt = dt.datetime(date.year, date.month, date.day, h, 0, tzinfo=SALON_TZ)
-    return slot_dt <= cutoff
-
-
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def get_month_availability(year: int, month: int, service_id: str | None = None) -> dict:
@@ -80,7 +74,6 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
     now_epoch    = utc_now_epoch()
     now_salon  = dt.datetime.now(SALON_TZ)
     today_salon = now_salon.date()
-    cutoff_24hr  = now_salon + dt.timedelta(hours=24)
 
     duration_minutes = _get_service_duration(service_id) if service_id else DEFAULT_DURATION_MINUTES
 
@@ -99,7 +92,7 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
         day_name  = DAY_NAMES[current.weekday()]
         day_hours = hours.get(day_name, {"closed": True})
 
-        if current <= today_salon:
+        if current < today_salon:
             status          = "past"
             available_count = 0
         elif date_str in blocked_dates:
@@ -112,9 +105,8 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
             all_slots     = _generate_slots(day_hours)
             taken_windows = taken_by_date.get(date_str, [])
 
-            available_slots   = []
-            within_24hr_count = 0
-            booked_count      = 0
+            available_slots = []
+            booked_count    = 0
 
             for slot_str in all_slots:
                 slot_start_min = time_to_minutes(slot_str)
@@ -123,8 +115,7 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
                     continue
                 slot_dt = dt.datetime(current.year, current.month, current.day,
                                       slot_start_min // 60, 0, tzinfo=SALON_TZ)
-                if slot_dt <= cutoff_24hr:
-                    within_24hr_count += 1
+                if slot_dt <= now_salon:
                     continue
                 available_slots.append(slot_str)
 
@@ -134,8 +125,6 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
                 status = "available"
             elif not all_slots:
                 status = "closed"
-            elif within_24hr_count > 0:
-                status = "blocked_24hr"
             else:
                 status = "fully_booked"
 
@@ -158,7 +147,6 @@ def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
     now_epoch    = utc_now_epoch()
     now_salon  = dt.datetime.now(SALON_TZ)
     today_salon = now_salon.date()
-    cutoff_24hr  = now_salon + dt.timedelta(hours=24)
 
     duration_minutes = _get_service_duration(service_id) if service_id else DEFAULT_DURATION_MINUTES
 
@@ -167,7 +155,7 @@ def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
     except ValueError:
         return {"date": date_str, "timezone": "America/Indiana/Indianapolis", "slots": []}
 
-    if date <= today_salon:
+    if date < today_salon:
         return {"date": date_str, "timezone": "America/Indiana/Indianapolis", "slots": []}
 
     if date_str in blocked_dates:
@@ -192,7 +180,7 @@ def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
             continue
         h       = slot_start_min // 60
         slot_dt = dt.datetime(date.year, date.month, date.day, h, 0, tzinfo=SALON_TZ)
-        if slot_dt <= cutoff_24hr:
+        if slot_dt <= now_salon:
             continue
         slots_result.append({
             "time":     _format_time_12h(h),

@@ -42,6 +42,65 @@ def test_appointment_validation_rejects_past_date() -> None:
         )
 
 
+def test_appointment_validation_allows_same_day_future_time(monkeypatch) -> None:
+    from appointments import models
+    from appointments.models import AppointmentRequest
+
+    monkeypatch.setattr(models, "_salon_today", lambda: dt.date(2026, 5, 27))
+
+    class _FrozenDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            frozen = dt.datetime(2026, 5, 27, 13, 0, tzinfo=models.SALON_TZ)
+            return frozen.astimezone(tz) if tz else frozen
+
+    monkeypatch.setattr(models.dt, "datetime", _FrozenDatetime)
+
+    request = AppointmentRequest.model_validate(
+        {
+            "serviceId": "svc-knotless-braids",
+            "clientName": "Amara Test",
+            "clientEmail": "amara@example.com",
+            "clientPhone": "3175550123",
+            "preferredDate": "2026-05-27",
+            "preferredTime": "14:00",
+            "policyAccepted": True,
+            "honeypot": "",
+        }
+    )
+
+    assert request.preferredDate == dt.date(2026, 5, 27)
+
+
+def test_appointment_validation_rejects_same_day_time_already_passed(monkeypatch) -> None:
+    from appointments import models
+    from appointments.models import AppointmentRequest
+
+    monkeypatch.setattr(models, "_salon_today", lambda: dt.date(2026, 5, 27))
+
+    class _FrozenDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            frozen = dt.datetime(2026, 5, 27, 13, 0, tzinfo=models.SALON_TZ)
+            return frozen.astimezone(tz) if tz else frozen
+
+    monkeypatch.setattr(models.dt, "datetime", _FrozenDatetime)
+
+    with pytest.raises(ValueError, match="already passed"):
+        AppointmentRequest.model_validate(
+            {
+                "serviceId": "svc-knotless-braids",
+                "clientName": "Amara Test",
+                "clientEmail": "amara@example.com",
+                "clientPhone": "3175550123",
+                "preferredDate": "2026-05-27",
+                "preferredTime": "10:00",
+                "policyAccepted": True,
+                "honeypot": "",
+            }
+        )
+
+
 def test_appointment_validation_uses_salon_timezone_today(monkeypatch) -> None:
     from appointments import models
     from appointments.models import AppointmentRequest

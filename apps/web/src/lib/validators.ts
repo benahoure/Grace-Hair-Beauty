@@ -44,8 +44,8 @@ const futureDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a preferred date.')
   .refine((value) => {
-    return value >= tomorrowInSalonTimeZone() && value <= maxBookingDateInSalonTimeZone()
-  }, 'Choose a date within the next 90 days, starting tomorrow.')
+    return value >= dateStringInSalonTimeZone() && value <= maxBookingDateInSalonTimeZone()
+  }, 'Choose a date within the next 90 days.')
 
 export const bookingSchema = z.object({
   serviceId: z.string().min(1, 'Choose a service.'),

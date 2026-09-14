@@ -126,7 +126,6 @@ function calDayClass(status: AvailabilityDate['status'] | 'loading' | 'selected'
     case 'selected':     return base + 'bg-gold text-espresso font-bold cursor-pointer shadow-sm'
     case 'available':    return base + 'text-espresso hover:bg-gold/20 cursor-pointer'
     case 'fully_booked': return base + 'text-mocha/30 cursor-not-allowed'
-    case 'blocked_24hr': return base + 'text-amber-700/50 cursor-not-allowed'
     case 'blocked':      return base + 'text-mocha/20 cursor-not-allowed'
     case 'closed':       return base + 'text-mocha/20 cursor-default'
     case 'past':         return base + 'text-mocha/15 cursor-default'
@@ -212,7 +211,7 @@ function AvailabilityCalendar({
           const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
           const isSelected = dateStr === selectedDate
           const info = byDate[dateStr]
-          const status = dateStr <= todayStr ? 'past' : isLoading ? 'loading' : (info?.status ?? 'loading')
+          const status = dateStr < todayStr ? 'past' : isLoading ? 'loading' : (info?.status ?? 'loading')
           const cellStatus = isSelected ? 'selected' : status
           const isClickable = status === 'available' || isSelected
 
@@ -221,7 +220,7 @@ function AvailabilityCalendar({
               disabled={!isClickable}
               onClick={() => isClickable ? onDateSelect(dateStr) : undefined}
               className={calDayClass(cellStatus)}
-              title={status === 'fully_booked' ? 'Fully booked' : status === 'blocked_24hr' ? 'Call salon — within 24 hrs' : status === 'blocked' ? 'Unavailable' : status === 'closed' ? 'Closed' : undefined}
+              title={status === 'fully_booked' ? 'Fully booked' : status === 'blocked' ? 'Unavailable' : status === 'closed' ? 'Closed' : undefined}
             >
               {day}
               {status === 'available' && !isSelected && (

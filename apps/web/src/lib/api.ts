@@ -136,9 +136,8 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
     const url = new URL(path, window.location.origin)
     const monthParam = url.searchParams.get('month')
     const dateParam = url.searchParams.get('date')
-    const today = new Date()
-    const todayLocalStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-    const cutoff24 = new Date(today.getTime() + 24 * 3600 * 1000)
+    const now = new Date()
+    const todayLocalStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     if (monthParam) {
       const [y, m] = monthParam.split('-').map(Number)
       const daysInMonth = new Date(y, m, 0).getDate()
@@ -147,7 +146,7 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
         const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
         const dow = new Date(y, m - 1, d).getDay()
         let status: MonthAvailability['dates'][number]['status']
-        if (dateStr <= todayLocalStr) status = 'past'
+        if (dateStr < todayLocalStr) status = 'past'
         else if (dow === 0) status = 'closed'  // Sunday closed in mock
         else status = 'available'
         dates.push({ date: dateStr, status, availableSlots: status === 'available' ? 4 : 0 })
@@ -158,10 +157,11 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
       const dateObj = new Date(dateParam + 'T00:00:00')
       const dow = dateObj.getDay()
       if (dow === 0) return { date: dateParam, timezone: 'America/Indiana/Indianapolis', slots: [] } as T
+      if (dateParam < todayLocalStr) return { date: dateParam, timezone: 'America/Indiana/Indianapolis', slots: [] } as T
       const rawHours = [9,10,11,12,13,14,15,16,17]  // hourly, latest start 5pm
       const slots = rawHours.flatMap((h) => {
         const slotDt = new Date(dateParam + `T${String(h).padStart(2,'0')}:00:00`)
-        if (slotDt <= cutoff24) return []
+        if (slotDt <= now) return []
         const suffix = h < 12 ? 'AM' : 'PM'
         const display = h % 12 || 12
         return [{ time: `${display}:00 ${suffix}`, datetime: slotDt.toISOString(), available: true }]
