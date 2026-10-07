@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-from boto3.dynamodb.conditions import Attr
-
 from appointments.models import (
     DEFAULT_DURATION_MINUTES,
     DEPOSIT_AMOUNT_CENTS,
@@ -59,9 +57,7 @@ def _slot_is_available(
     Active = pending_payment (not expired), pending, or confirmed.
     Cancelled / completed / no_show are ignored.
     """
-    windows = collect_windows(
-        Attr("preferredDate").eq(preferred_date), exclude_id=exclude_id
-    ).get(preferred_date, [])
+    windows = collect_windows(preferred_date, preferred_date, exclude_id=exclude_id).get(preferred_date, [])
     new_start = time_to_minutes(preferred_time)
     return has_capacity(windows, new_start, new_start + duration_minutes)
 

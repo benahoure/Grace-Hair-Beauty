@@ -226,6 +226,7 @@ async function mockRequest<T>(path: string, init: RequestInit): Promise<T> {
     if (method === 'PATCH') {
       return { appointmentId: 'mock', status: 'confirmed', serviceName: 'Mock Service' } as T
     }
+    if (path.includes('summary=months')) return { year: new Date().getFullYear(), months: {} } as T
     return { appointments: [], nextCursor: null } as T
   }
 
@@ -345,9 +346,25 @@ export const api = {
     }),
 
   // ── Admin — Appointments ────────────────────────────────────────────────────
-  getAdminAppointments: (params: { status?: string; date?: string } = {}) =>
+  // Pass either a date range (from/to, max 92 days) or status + limit for cursor pagination.
+  getAdminAppointments: (
+    params: {
+      status?: string
+      date?: string
+      from?: string
+      to?: string
+      limit?: number
+      cursor?: string
+      order?: 'asc' | 'desc'
+    } = {},
+  ) =>
     request<{ appointments: AdminAppointment[]; nextCursor: string | null }>(
       `/admin/appointments${buildQuery(params)}`,
+    ),
+
+  getAdminAppointmentMonthCounts: (year: number) =>
+    request<{ year: number; months: Record<string, number> }>(
+      `/admin/appointments${buildQuery({ summary: 'months', year })}`,
     ),
 
   updateAppointment: (

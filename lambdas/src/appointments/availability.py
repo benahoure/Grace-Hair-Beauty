@@ -3,8 +3,6 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from boto3.dynamodb.conditions import Attr
-
 from appointments.models import DEFAULT_DURATION_MINUTES
 from appointments.scheduling import collect_windows, has_capacity, time_to_minutes
 from common.config import get_config
@@ -80,10 +78,7 @@ def get_month_availability(year: int, month: int, service_id: str | None = None)
     first_day = dt.date(year, month, 1)
     last_day  = (dt.date(year + 1, 1, 1) if month == 12 else dt.date(year, month + 1, 1)) - dt.timedelta(days=1)
 
-    taken_by_date = collect_windows(
-        Attr("preferredDate").between(first_day.isoformat(), last_day.isoformat()),
-        now_epoch=now_epoch,
-    )
+    taken_by_date = collect_windows(first_day.isoformat(), last_day.isoformat(), now_epoch=now_epoch)
 
     dates_result = []
     current = first_day
@@ -167,10 +162,7 @@ def get_date_slots(date_str: str, service_id: str | None = None) -> dict:
     if not all_slots:
         return {"date": date_str, "timezone": "America/Indiana/Indianapolis", "slots": []}
 
-    taken_by_date = collect_windows(
-        Attr("preferredDate").eq(date_str),
-        now_epoch=now_epoch,
-    )
+    taken_by_date = collect_windows(date_str, date_str, now_epoch=now_epoch)
     taken_windows = taken_by_date.get(date_str, [])
 
     slots_result = []

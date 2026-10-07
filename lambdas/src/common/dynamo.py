@@ -78,19 +78,41 @@ def scan_items(
     return to_json_safe(response.get("Items", [])), encode_cursor(response.get("LastEvaluatedKey"))
 
 
+def scan_all_items(table_name: str, *, filter_expression: Any | None = None) -> list[dict[str, Any]]:
+    """Read every page of a scan. Never truncates.
+
+    A single scan page reads at most 100 items (and at most 1 MB) *before* the
+    filter is applied, so one page silently drops rows once a table outgrows it.
+    Only use this for tables whose size is bounded by the business itself
+    (service catalog, portfolio, moderated reviews/messages); time-series data
+    such as appointments must be queried by key range instead.
+    """
+    items: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        page, cursor = scan_items(table_name, filter_expression=filter_expression, limit=100, cursor=cursor)
+        items.extend(page)
+        if not cursor:
+            return items
+
+
 def query_index(
     table_name: str,
     index_name: str,
     pk_name: str,
     pk_value: Any,
     *,
+    range_condition: Any | None = None,
     limit: int = 50,
     cursor: str | None = None,
     scan_index_forward: bool = False,
 ) -> tuple[list[dict[str, Any]], str | None]:
+    key_condition = Key(pk_name).eq(pk_value)
+    if range_condition is not None:
+        key_condition = key_condition & range_condition
     kwargs: dict[str, Any] = {
         "IndexName": index_name,
-        "KeyConditionExpression": Key(pk_name).eq(pk_value),
+        "KeyConditionExpression": key_condition,
         "Limit": min(limit, 100),
         "ScanIndexForward": scan_index_forward,
     }
@@ -99,6 +121,38 @@ def query_index(
         kwargs["ExclusiveStartKey"] = exclusive_start_key
     response = _table(table_name).query(**kwargs)
     return to_json_safe(response.get("Items", [])), encode_cursor(response.get("LastEvaluatedKey"))
+
+
+def query_all_index(
+    table_name: str,
+    index_name: str,
+    pk_name: str,
+    pk_value: Any,
+    *,
+    range_condition: Any | None = None,
+    scan_index_forward: bool = True,
+) -> list[dict[str, Any]]:
+    """Read every page of an index query. Never truncates.
+
+    Callers must bound the read with ``range_condition`` (e.g. one month of
+    dates) unless the partition itself is known to stay small.
+    """
+    items: list[dict[str, Any]] = []
+    cursor: str | None = None
+    while True:
+        page, cursor = query_index(
+            table_name,
+            index_name,
+            pk_name,
+            pk_value,
+            range_condition=range_condition,
+            limit=100,
+            cursor=cursor,
+            scan_index_forward=scan_index_forward,
+        )
+        items.extend(page)
+        if not cursor:
+            return items
 
 
 def update_item(table_name: str, key: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:

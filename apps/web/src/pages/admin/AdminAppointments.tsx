@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, ChevronDown, List } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { PageMeta } from '../../components/seo/PageMeta'
 import { ApiRequestError, api } from '../../lib/api'
@@ -12,6 +12,16 @@ import { AdminPageShell } from './AdminDashboard'
 
 const STATUS_TABS = ['confirmed', 'pending', 'completed', 'cancelled', 'no_show', 'all'] as const
 type StatusFilter = typeof STATUS_TABS[number]
+
+// Actionable tabs read soonest-first; history tabs read most-recent-first
+const LIST_ORDER: Record<StatusFilter, 'asc' | 'desc'> = {
+  confirmed: 'asc',
+  pending:   'asc',
+  completed: 'desc',
+  cancelled: 'desc',
+  no_show:   'desc',
+  all:       'asc',
+}
 
 const TAB_LABEL: Record<StatusFilter, string> = {
   confirmed:  'Upcoming',
@@ -52,6 +62,20 @@ function todayStr() {
   return toDateStr(n.getFullYear(), n.getMonth(), n.getDate())
 }
 
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1)
+}
+
+function monthRange(date: Date) {
+  const y = date.getFullYear()
+  const m = date.getMonth()
+  return { from: toDateStr(y, m, 1), to: toDateStr(y, m, new Date(y, m + 1, 0).getDate()) }
+}
+
 function fmtMonthYear(date: Date) {
   return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
@@ -90,20 +114,34 @@ const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 
 function AppointmentCalendar({
   appointments,
+  visibleMonth,
+  onMonthChange,
   selectedDate,
   onSelectDate,
 }: {
   appointments: AdminAppointment[]
+  visibleMonth: Date
+  onMonthChange: (month: Date) => void
   selectedDate: string | null
   onSelectDate: (d: string | null) => void
 }) {
-  const [calDate, setCalDate] = useState(new Date())
+  const calDate = visibleMonth
+  const setCalDate = (date: Date) => onMonthChange(startOfMonth(date))
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerYear, setPickerYear] = useState(new Date().getFullYear())
   const today = todayStr()
 
   const year = calDate.getFullYear()
   const month = calDate.getMonth()
+
+  // Months-with-bookings dots for the picker year, fetched only while the picker is open
+  const monthCountsQuery = useQuery({
+    queryKey: ['admin-appointments', 'month-counts', pickerYear],
+    queryFn: () => api.getAdminAppointmentMonthCounts(pickerYear),
+    enabled: pickerOpen,
+    staleTime: 60_000,
+  })
+  const monthCounts = monthCountsQuery.data?.months ?? {}
 
   // Group appointments by date
   const byDate = useMemo(() => {
@@ -197,10 +235,7 @@ function AppointmentCalendar({
           <div className="grid grid-cols-4 gap-1.5">
             {MONTH_NAMES.map((name, m) => {
               const isCurrent = pickerYear === year && m === month
-              const hasApts = Array.from(byDate.keys()).some(d => {
-                const [dy, dm] = d.split('-').map(Number)
-                return dy === pickerYear && dm - 1 === m
-              })
+              const hasApts = (monthCounts[`${pickerYear}-${String(m + 1).padStart(2, '0')}`] ?? 0) > 0
               return (
                 <button
                   key={name}
@@ -356,7 +391,6 @@ function AppointmentCard({
 
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ['admin-appointments'] })
-    queryClient.invalidateQueries({ queryKey: ['admin-appointments-all'] })
   }
 
   function resetAdminPanel() {
@@ -792,24 +826,59 @@ function AdminActionForm({
 
 // ─── main page ────────────────────────────────────────────────────────────────
 
+function rangeQueryOptions(from: string, to: string) {
+  return {
+    queryKey: ['admin-appointments', 'range', from, to],
+    queryFn: () => api.getAdminAppointments({ from, to }),
+    staleTime: 30_000,
+  }
+}
+
 export function AdminAppointments() {
   const [view, setView] = useState<'calendar' | 'list'>('calendar')
   const [filter, setFilter] = useState<StatusFilter>('confirmed')
   const [selectedDate, setSelectedDate] = useState<string | null>(todayStr)
+  const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(new Date()))
   const queryClient = useQueryClient()
+  const today = todayStr()
 
-  // List view query — filtered by status
-  const listQuery = useQuery({
-    queryKey: ['admin-appointments', filter],
-    queryFn: () => api.getAdminAppointments(filter !== 'all' ? { status: filter } : {}),
-    enabled: view === 'list',
+  // One month at a time — drives the calendar and the list view's "All" tab
+  const { from: monthFrom, to: monthTo } = monthRange(visibleMonth)
+  const monthEnabled = view === 'calendar' || filter === 'all'
+  const monthQuery = useQuery({
+    ...rangeQueryOptions(monthFrom, monthTo),
+    enabled: monthEnabled,
+    placeholderData: keepPreviousData,
+  })
+  const monthLoading = monthQuery.isPending || monthQuery.isPlaceholderData
+
+  // Warm the neighbouring months so paging through the calendar feels instant
+  useEffect(() => {
+    if (!monthEnabled) return
+    for (const offset of [-1, 1]) {
+      const { from, to } = monthRange(addMonths(visibleMonth, offset))
+      void queryClient.prefetchQuery(rangeQueryOptions(from, to))
+    }
+  }, [monthEnabled, visibleMonth, queryClient])
+
+  // Today is fetched on its own so the "pending today" chip is right whatever month is on screen
+  const todayQuery = useQuery({ ...rangeQueryOptions(today, today), enabled: view === 'calendar' })
+
+  // A selected day outside the visible month is fetched on its own
+  const selectedInMonth = selectedDate !== null && selectedDate >= monthFrom && selectedDate <= monthTo
+  const dayQuery = useQuery({
+    ...rangeQueryOptions(selectedDate ?? today, selectedDate ?? today),
+    enabled: view === 'calendar' && selectedDate !== null && !selectedInMonth,
   })
 
-  // Calendar view query — fetch all appointments
-  const calQuery = useQuery({
-    queryKey: ['admin-appointments-all'],
-    queryFn: () => api.getAdminAppointments({}),
-    enabled: view === 'calendar',
+  // Per-status list tabs: paginated, oldest-first for actionable tabs, newest-first for history
+  const listQuery = useInfiniteQuery({
+    queryKey: ['admin-appointments', 'list', filter],
+    queryFn: ({ pageParam }) =>
+      api.getAdminAppointments({ status: filter, limit: 25, order: LIST_ORDER[filter], cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: view === 'list' && filter !== 'all',
   })
 
   const mutation = useMutation({
@@ -820,23 +889,29 @@ export function AdminAppointments() {
     }) => api.updateAppointment(id, { status, adminNote: adminNote?.trim() || null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-appointments'] })
-      queryClient.invalidateQueries({ queryKey: ['admin-appointments-all'] })
     },
   })
 
-  const allApts = useMemo(() => calQuery.data?.appointments ?? [], [calQuery.data])
-  const listApts = useMemo(() => listQuery.data?.appointments ?? [], [listQuery.data])
+  const allApts = useMemo(() => monthQuery.data?.appointments ?? [], [monthQuery.data])
+  const listApts = useMemo(
+    () => (filter === 'all' ? allApts : listQuery.data?.pages.flatMap((page) => page.appointments) ?? []),
+    [filter, allApts, listQuery.data],
+  )
+  const listLoading = filter === 'all' ? monthLoading : listQuery.isPending
+  const listError = filter === 'all' ? monthQuery.isError : listQuery.isError
 
   // Appointments for the selected calendar date
-  const dayApts = useMemo(
-    () => (selectedDate ? allApts.filter((a) => a.preferredDate === selectedDate) : []),
-    [allApts, selectedDate],
-  )
+  const dayApts = useMemo(() => {
+    if (!selectedDate) return []
+    if (selectedInMonth) return allApts.filter((a) => a.preferredDate === selectedDate)
+    return dayQuery.data?.appointments ?? []
+  }, [selectedDate, selectedInMonth, allApts, dayQuery.data])
+  const dayLoading = selectedInMonth ? monthLoading : dayQuery.isPending
 
   // Today's pending count (for the summary chip)
   const todayPending = useMemo(
-    () => allApts.filter((a) => a.preferredDate === todayStr() && a.status === 'pending').length,
-    [allApts],
+    () => (todayQuery.data?.appointments ?? []).filter((a) => a.status === 'pending').length,
+    [todayQuery.data],
   )
 
   return (
@@ -875,7 +950,7 @@ export function AdminAppointments() {
         {view === 'calendar' && (
           <div className="space-y-4">
             {/* Summary chips */}
-            {!calQuery.isPending && (
+            {!monthQuery.isPending && (
               <div className="flex flex-wrap gap-2">
                 {todayPending > 0 && (
                   <button
@@ -890,29 +965,31 @@ export function AdminAppointments() {
                 )}
                 <span className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
                   style={{ background: 'rgba(0,0,0,0.05)', color: '#6B4226' }}>
-                  {allApts.length} total appointments
+                  {monthLoading ? '…' : allApts.length} in {fmtMonthYear(visibleMonth)}
                 </span>
               </div>
             )}
 
-            {calQuery.isPending && (
+            {monthQuery.isPending && (
               <div className="h-72 animate-pulse rounded-2xl bg-cream-deep" />
             )}
 
-            {calQuery.isError && (
+            {monthQuery.isError && (
               <p className="text-sm text-error">Failed to load appointments. Please refresh.</p>
             )}
 
-            {!calQuery.isPending && !calQuery.isError && (
+            {!monthQuery.isPending && !monthQuery.isError && (
               <AppointmentCalendar
                 appointments={allApts}
+                visibleMonth={visibleMonth}
+                onMonthChange={setVisibleMonth}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
               />
             )}
 
             {/* Selected day detail */}
-            {selectedDate && !calQuery.isPending && (
+            {selectedDate && !monthQuery.isPending && (
               <div>
                 <div className="mb-3 flex items-center justify-between">
                   <div>
@@ -936,7 +1013,9 @@ export function AdminAppointments() {
                   </button>
                 </div>
 
-                {dayApts.length === 0 ? (
+                {dayLoading ? (
+                  <div className="h-24 animate-pulse rounded-xl bg-cream-deep" />
+                ) : dayApts.length === 0 ? (
                   <div className="rounded-xl border border-cream-border bg-paper p-6 text-center">
                     <p className="text-sm text-mocha/40">No appointments on this day.</p>
                   </div>
@@ -958,7 +1037,7 @@ export function AdminAppointments() {
               </div>
             )}
 
-            {!selectedDate && !calQuery.isPending && (
+            {!selectedDate && !monthQuery.isPending && (
               <p className="py-4 text-center text-sm text-mocha/35">
                 Tap a date to see that day's appointments.
               </p>
@@ -986,7 +1065,25 @@ export function AdminAppointments() {
               ))}
             </div>
 
-            {listQuery.isPending && (
+            {filter === 'all' && (
+              <div className="mb-4 flex items-center justify-between rounded-xl border border-cream-border bg-paper px-2 py-1.5">
+                <button
+                  type="button"
+                  onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-mocha/60 hover:bg-cream-deep hover:text-mocha"
+                  aria-label="Previous month"
+                >‹</button>
+                <span className="text-sm font-semibold text-espresso">{fmtMonthYear(visibleMonth)}</span>
+                <button
+                  type="button"
+                  onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-mocha/60 hover:bg-cream-deep hover:text-mocha"
+                  aria-label="Next month"
+                >›</button>
+              </div>
+            )}
+
+            {listLoading && (
               <div className="grid gap-3">
                 {[1, 2, 3].map((n) => (
                   <div key={n} className="h-24 animate-pulse rounded-xl bg-cream-deep" />
@@ -994,30 +1091,47 @@ export function AdminAppointments() {
               </div>
             )}
 
-            {listQuery.isError && (
+            {listError && (
               <p className="text-sm text-error">Failed to load appointments. Please refresh.</p>
             )}
 
-            {!listQuery.isPending && !listQuery.isError && listApts.length === 0 && (
+            {!listLoading && !listError && listApts.length === 0 && (
               <div className="rounded-xl border border-cream-border bg-paper p-10 text-center">
                 <p className="text-sm text-mocha/60">
-                  No {filter !== 'all' ? filter : ''} appointments.
+                  {filter === 'all'
+                    ? `No appointments in ${fmtMonthYear(visibleMonth)}.`
+                    : `No ${filter} appointments.`}
                 </p>
               </div>
             )}
 
-            <div className="grid gap-3">
-              {listApts.map((apt) => (
-                <AppointmentCard
-                  key={apt.appointmentId}
-                  apt={apt}
-                  onUpdate={(status, adminNote) =>
-                    mutation.mutate({ id: apt.appointmentId, status, adminNote })
-                  }
-                  isUpdating={mutation.isPending}
-                />
-              ))}
-            </div>
+            {!listLoading && (
+              <div className="grid gap-3">
+                {listApts.map((apt) => (
+                  <AppointmentCard
+                    key={apt.appointmentId}
+                    apt={apt}
+                    onUpdate={(status, adminNote) =>
+                      mutation.mutate({ id: apt.appointmentId, status, adminNote })
+                    }
+                    isUpdating={mutation.isPending}
+                  />
+                ))}
+              </div>
+            )}
+
+            {filter !== 'all' && listQuery.hasNextPage && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void listQuery.fetchNextPage()}
+                  disabled={listQuery.isFetchingNextPage}
+                  className="rounded-full border border-cream-border bg-paper px-5 py-2 text-xs font-semibold text-mocha transition-colors hover:bg-cream-deep disabled:opacity-50"
+                >
+                  {listQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </AdminPageShell>

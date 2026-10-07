@@ -13,11 +13,8 @@ needed to let more clients book the same window.
 
 from __future__ import annotations
 
-from boto3.dynamodb.conditions import ConditionBase
-
-from appointments.models import DEFAULT_DURATION_MINUTES
-from common.config import get_config
-from common.dynamo import scan_items
+from appointments.models import ACTIVE_STATUSES, DEFAULT_DURATION_MINUTES
+from appointments.queries import appointments_in_range
 from common.ids import utc_now_epoch
 
 # Number of braiders that can work at the same time (parallel appointment lanes).
@@ -43,12 +40,13 @@ def _is_active(item: dict, now_epoch: int) -> bool:
 
 
 def collect_windows(
-    filter_expr: ConditionBase,
+    date_from: str,
+    date_to: str,
     *,
     now_epoch: int | None = None,
     exclude_id: str | None = None,
 ) -> dict[str, list[Window]]:
-    """Scan active appointments matching ``filter_expr``.
+    """Active appointments with preferredDate in [date_from, date_to] (YYYY-MM-DD).
 
     Returns ``{date: [(start_min, end_min), ...]}`` for every active appointment,
     using ``serviceDurationMinutes`` stored on the appointment (falling back to
@@ -57,28 +55,20 @@ def collect_windows(
     """
     if now_epoch is None:
         now_epoch = utc_now_epoch()
-    config = get_config()
 
     taken: dict[str, list[Window]] = {}
-    cursor = None
-    for _ in range(20):
-        items, cursor = scan_items(
-            config.table_appointments, filter_expression=filter_expr, limit=100, cursor=cursor
-        )
-        for item in items:
-            if exclude_id and item.get("appointmentId") == exclude_id:
-                continue
-            if not _is_active(item, now_epoch):
-                continue
-            date_str = item.get("preferredDate", "")
-            time_str = item.get("preferredTime", "")
-            if not date_str or not time_str:
-                continue
-            start = time_to_minutes(time_str)
-            duration = int(item.get("serviceDurationMinutes", DEFAULT_DURATION_MINUTES))
-            taken.setdefault(date_str, []).append((start, start + duration))
-        if not cursor:
-            break
+    for item in appointments_in_range(ACTIVE_STATUSES, date_from, date_to):
+        if exclude_id and item.get("appointmentId") == exclude_id:
+            continue
+        if not _is_active(item, now_epoch):
+            continue
+        date_str = item.get("preferredDate", "")
+        time_str = item.get("preferredTime", "")
+        if not date_str or not time_str:
+            continue
+        start = time_to_minutes(time_str)
+        duration = int(item.get("serviceDurationMinutes", DEFAULT_DURATION_MINUTES))
+        taken.setdefault(date_str, []).append((start, start + duration))
     return taken
 
 

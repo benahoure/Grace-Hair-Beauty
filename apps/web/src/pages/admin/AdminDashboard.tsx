@@ -42,17 +42,17 @@ function fmtDayLabel(dateStr: string): string {
 // ── main component ────────────────────────────────────────────────────────────
 
 export function AdminDashboard() {
+  const today    = localDateStr(0)
+  const in7Days  = localDateStr(6)
+
   const confirmedQuery = useQuery({
-    queryKey: ['admin-appointments', 'confirmed'],
-    queryFn: () => api.getAdminAppointments({ status: 'confirmed' }),
+    queryKey: ['admin-appointments', 'dashboard', today, in7Days],
+    queryFn: () => api.getAdminAppointments({ status: 'confirmed', from: today, to: in7Days }),
   })
   const messages = useQuery({
     queryKey: ['admin-messages'],
     queryFn: () => api.getAdminContactMessages({ read: false }),
   })
-
-  const today    = localDateStr(0)
-  const in7Days  = localDateStr(6)
 
   const allConfirmed = confirmedQuery.data?.appointments ?? []
 

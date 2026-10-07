@@ -27,7 +27,10 @@ def test_appointment_validation_normalizes_phone() -> None:
 
 
 def test_appointment_validation_rejects_past_date() -> None:
-    from appointments.models import AppointmentRequest
+    from appointments.models import SALON_TZ, AppointmentRequest
+
+    # The salon's yesterday, not the machine's: CI runs on UTC, which is already tomorrow on Eastern evenings.
+    yesterday = dt.datetime.now(SALON_TZ).date() - dt.timedelta(days=1)
 
     with pytest.raises(ValueError, match="Date must be"):
         AppointmentRequest.model_validate(
@@ -36,7 +39,7 @@ def test_appointment_validation_rejects_past_date() -> None:
                 "clientName": "Amara Test",
                 "clientEmail": "amara@example.com",
                 "clientPhone": "3175550123",
-                "preferredDate": (dt.date.today() - dt.timedelta(days=1)).isoformat(),
+                "preferredDate": yesterday.isoformat(),
                 "preferredTime": "10:00",
             }
         )

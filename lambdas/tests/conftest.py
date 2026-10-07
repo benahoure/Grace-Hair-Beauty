@@ -48,3 +48,89 @@ def lambda_context():
         invoked_function_arn="arn:aws:lambda:us-east-1:123456789012:function:test-function",
         aws_request_id="test-request-id",
     )
+
+
+# ── In-memory DynamoDB (moto) mirroring infra/dynamodb.tf key + index schemas ──
+
+
+@pytest.fixture
+def ddb(monkeypatch: pytest.MonkeyPatch):
+    import boto3
+    from moto import mock_aws
+
+    from common import dynamo
+
+    with mock_aws():
+        resource = boto3.resource("dynamodb", region_name="us-east-1")
+        monkeypatch.setattr(dynamo, "_resource", resource)
+        yield resource
+
+
+@pytest.fixture
+def appointments_table(ddb):
+    return ddb.create_table(
+        TableName="appointments",
+        BillingMode="PAY_PER_REQUEST",
+        KeySchema=[{"AttributeName": "appointmentId", "KeyType": "HASH"}],
+        AttributeDefinitions=[
+            {"AttributeName": "appointmentId", "AttributeType": "S"},
+            {"AttributeName": "statusKey", "AttributeType": "S"},
+            {"AttributeName": "preferredDate", "AttributeType": "S"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "status-date-index",
+                "KeySchema": [
+                    {"AttributeName": "statusKey", "KeyType": "HASH"},
+                    {"AttributeName": "preferredDate", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            }
+        ],
+    )
+
+
+@pytest.fixture
+def reviews_table(ddb):
+    return ddb.create_table(
+        TableName="reviews",
+        BillingMode="PAY_PER_REQUEST",
+        KeySchema=[{"AttributeName": "reviewId", "KeyType": "HASH"}],
+        AttributeDefinitions=[
+            {"AttributeName": "reviewId", "AttributeType": "S"},
+            {"AttributeName": "approvedKey", "AttributeType": "S"},
+            {"AttributeName": "createdAt", "AttributeType": "S"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "approved-date-index",
+                "KeySchema": [
+                    {"AttributeName": "approvedKey", "KeyType": "HASH"},
+                    {"AttributeName": "createdAt", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            }
+        ],
+    )
+
+
+@pytest.fixture
+def make_appointment():
+    return _make_appointment
+
+
+def _make_appointment(appointment_id: str, status: str, date: str, **extra: object) -> dict:
+    item: dict = {
+        "appointmentId": appointment_id,
+        "status": status,
+        "statusKey": status,
+        "preferredDate": date,
+        "preferredTime": "10:00",
+        "serviceDurationMinutes": 120,
+        "createdAt": f"{date}T00:00:00Z",
+        "clientName": "Test Client",
+        "clientEmail": "client@example.com",
+        "clientPhone": "3175550123",
+    }
+    item.update(extra)
+    return item
