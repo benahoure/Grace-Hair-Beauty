@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from aws_lambda_powertools.utilities.typing import LambdaContext
 from pydantic import ValidationError
 
@@ -103,7 +105,7 @@ def _compute_and_store_aggregate() -> dict:
             "reviewId": "AGGREGATE#RATINGS",
             "totalCount": total,
             "sumRatings": rating_sum,
-            "averageRating": average,
+            "averageRating": Decimal(str(average)),  # DynamoDB rejects Python floats
             "updatedAt": utc_now(),
         },
     )

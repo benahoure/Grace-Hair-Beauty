@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import re
+from decimal import Decimal
 from typing import Any, Literal
 
 import boto3
@@ -947,7 +948,7 @@ def recalculate_review_aggregate() -> None:
             "reviewId": "AGGREGATE#RATINGS",
             "totalCount": total,
             "sumRatings": rating_sum,
-            "averageRating": average,
+            "averageRating": Decimal(str(average)),  # DynamoDB rejects Python floats
             "updatedAt": utc_now(),
         },
     )
