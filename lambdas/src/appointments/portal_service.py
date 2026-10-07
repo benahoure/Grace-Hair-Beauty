@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-from boto3.dynamodb.conditions import Attr
-
 from appointments.models import (
     DEFAULT_DURATION_MINUTES,
     DEPOSIT_AMOUNT_CENTS,
@@ -50,9 +48,7 @@ def _slot_is_available_for_reschedule(
     exclude_id: str | None = None,
 ) -> bool:
     """Braider-capacity slot check for reschedules. Excludes the appointment being moved."""
-    windows = collect_windows(
-        Attr("preferredDate").eq(preferred_date), exclude_id=exclude_id
-    ).get(preferred_date, [])
+    windows = collect_windows(preferred_date, preferred_date, exclude_id=exclude_id).get(preferred_date, [])
     new_start = time_to_minutes(preferred_time)
     return has_capacity(windows, new_start, new_start + duration_minutes)
 
@@ -256,7 +252,7 @@ def portal_cancel(token: str) -> dict:
         raise NotFoundError("Appointment not found.") from None
 
     try:
-        create_refund(charge_id, idempotency_key=f"{appointment_id}-client-cancel")
+        create_refund(charge_id, idempotency_key=f"{appointment_id}-client-cancel", appointment_id=appointment_id)
     except Exception as exc:
         logger.exception("Stripe refund failed during client cancel", extra={"appointmentId": appointment_id})
         # Rollback to paid so admin can retry
@@ -264,7 +260,13 @@ def portal_cancel(token: str) -> dict:
             update_item(
                 get_config().table_appointments,
                 {"appointmentId": appointment_id},
-                {"status": "cancelled", "depositStatus": "paid", "refundStatus": "none", "updatedAt": utc_now()},
+                {
+                    "status": "cancelled",
+                    "statusKey": "cancelled",
+                    "depositStatus": "paid",
+                    "refundStatus": "none",
+                    "updatedAt": utc_now(),
+                },
             )
         except Exception:  # noqa: S110
             logger.warning("Rollback update failed after Stripe refund error", extra={"appointmentId": appointment_id})

@@ -4,7 +4,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from pydantic import ValidationError
 
 from common.config import get_config
-from common.dynamo import bool_filter, get_item, put_item, scan_items
+from common.dynamo import bool_filter, get_item, put_item, query_index, scan_items
 from common.honeypot import is_bot
 from common.http import method, parse_json_body, query_params, validation_errors
 from common.ids import new_id, utc_now
@@ -27,11 +27,15 @@ def get_reviews(event: dict) -> dict:
     try:
         params = query_params(event)
         limit = min(int(params.get("limit", "10")), 25)
-        items, next_cursor = scan_items(
+        # Newest approved reviews first; the AGGREGATE#RATINGS row has no approvedKey so it is never indexed.
+        items, next_cursor = query_index(
             get_config().table_reviews,
-            filter_expression=bool_filter("approved", True),
+            "approved-date-index",
+            "approvedKey",
+            "true",
             limit=limit,
             cursor=params.get("cursor"),
+            scan_index_forward=False,
         )
         reviews = [
             {

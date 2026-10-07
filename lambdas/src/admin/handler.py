@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import os
 import re
 from typing import Any, Literal
@@ -9,6 +10,8 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 from boto3.dynamodb.conditions import Attr
 from pydantic import BaseModel, Field, ValidationError
 
+from appointments.models import ALL_STATUSES
+from appointments.queries import appointments_in_range, appointments_page, month_counts
 from business_settings.handler import SETTINGS_KEY
 from business_settings.models import BusinessSettingsPatch
 from common.config import get_config
@@ -18,6 +21,7 @@ from common.dynamo import (
     delete_item,
     get_item,
     put_item,
+    scan_all_items,
     scan_items,
     update_item,
     update_item_with_removes,
@@ -340,70 +344,116 @@ def audit(
     )
 
 
-def get_appointments(event: dict) -> dict:
-    config = get_config()
-    params = query_params(event)
-    status = params.get("status")
-    filter_expression: Any = Attr("appointmentId").exists()
-    if status:
-        filter_expression = filter_expression & Attr("status").eq(status)
-    if params.get("date"):
-        filter_expression = filter_expression & Attr("preferredDate").eq(params["date"])
+MAX_APPOINTMENT_RANGE_DAYS = 92
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-    items, next_cursor = scan_items(
-        config.table_appointments,
-        filter_expression=filter_expression,
-        limit=min(int(params.get("limit", "25")), 50),
-        cursor=params.get("cursor"),
-    )
-    appointments = []
-    for item in sorted(items, key=lambda value: value.get("createdAt", ""), reverse=True):
+
+def _parse_iso_date(value: str) -> dt.date:
+    if not _ISO_DATE_RE.match(value):
+        raise ValueError("Dates must be formatted YYYY-MM-DD.")
+    return dt.date.fromisoformat(value)
+
+
+def _appointment_sort_key(item: dict) -> tuple[str, str]:
+    return (str(item.get("preferredDate", "")), str(item.get("preferredTime", "")))
+
+
+def get_appointments(event: dict) -> dict:
+    """List appointments for the admin portal.
+
+    Three request shapes, all read through status-date-index (never a table scan):
+    - ``from`` + ``to`` (or ``date``): every appointment in that date range (calendar, dashboard).
+    - ``status`` + ``limit`` [+ ``cursor``, ``order``]: one page of a status (list tabs).
+    - neither: the complete set, for clients built before ranges/pagination existed.
+    """
+    params = query_params(event)
+    if params.get("summary") == "months":
+        return get_appointment_month_counts(params)
+
+    status = params.get("status") or None
+    if status is not None and status not in ALL_STATUSES:
+        raise ValueError("Invalid appointment status.")
+    statuses = (status,) if status else ALL_STATUSES
+
+    date_from = params.get("from") or params.get("date")
+    date_to = params.get("to") or params.get("date")
+    paginated = "limit" in params or "cursor" in params
+    next_cursor: str | None = None
+
+    if date_from or date_to:
+        if paginated:
+            raise ValueError("limit and cursor cannot be combined with a date range.")
+        if not (date_from and date_to):
+            raise ValueError("Both from and to are required.")
+        start, end = _parse_iso_date(date_from), _parse_iso_date(date_to)
+        if start > end:
+            raise ValueError("from must be on or before to.")
+        if (end - start).days >= MAX_APPOINTMENT_RANGE_DAYS:
+            raise ValueError(f"Date range cannot exceed {MAX_APPOINTMENT_RANGE_DAYS} days.")
+        items = appointments_in_range(statuses, date_from, date_to)
+        items.sort(key=_appointment_sort_key)
+    elif paginated:
+        if status is None:
+            raise ValueError("status is required when using limit or cursor.")
+        try:
+            limit = int(params.get("limit", "50"))
+        except ValueError:
+            raise ValueError("limit must be a number.") from None
+        order = params.get("order", "desc")
+        if order not in {"asc", "desc"}:
+            raise ValueError("order must be asc or desc.")
+        ascending = order == "asc"
+        items, next_cursor = appointments_page(
+            status, ascending=ascending, limit=max(1, min(limit, 100)), cursor=params.get("cursor")
+        )
+        items.sort(key=_appointment_sort_key, reverse=not ascending)
+    else:
+        # Full date span keeps older frontends (no range, no pagination) complete rather than truncated.
+        items = appointments_in_range(statuses, "0000-01-01", "9999-12-31")
+        items.sort(key=lambda value: value.get("createdAt", ""), reverse=True)
+
+    for item in items:
         item["clientEmail"] = decrypt_pii(item.get("clientEmail"))
         item["clientPhone"] = decrypt_pii(item.get("clientPhone"))
-        appointments.append(item)
-    return ok({"appointments": appointments, "nextCursor": next_cursor})
+    return ok({"appointments": items, "nextCursor": next_cursor})
+
+
+def get_appointment_month_counts(params: dict[str, str]) -> dict:
+    """Appointments per month for one year — drives the month-picker dots without loading the year."""
+    try:
+        year = int(params.get("year", ""))
+    except ValueError:
+        raise ValueError("year must be a number.") from None
+    if not 2000 <= year <= 2100:
+        raise ValueError("year is out of range.")
+    return ok({"year": year, "months": month_counts(year)})
 
 
 def get_services(event: dict) -> dict:
-    params = query_params(event)
-    items, next_cursor = scan_items(
-        get_config().table_services,
-        filter_expression=Attr("serviceId").exists(),
-        limit=min(int(params.get("limit", "50")), 100),
-        cursor=params.get("cursor"),
-    )
+    items = scan_all_items(get_config().table_services, filter_expression=Attr("serviceId").exists())
 
     def _sort_key(value: dict) -> tuple:
         order = value.get("displayOrder")
         return (order is None, int(order) if order is not None else 0, value.get("name", ""))
 
     services = sorted(items, key=_sort_key)
-    return ok({"services": services, "nextCursor": next_cursor})
+    return ok({"services": services, "nextCursor": None})
 
 
 def get_portfolio(event: dict) -> dict:
-    params = query_params(event)
-    items, next_cursor = scan_items(
-        get_config().table_portfolio,
-        filter_expression=Attr("styleId").exists(),
-        limit=min(int(params.get("limit", "50")), 100),
-        cursor=params.get("cursor"),
-    )
+    items = scan_all_items(get_config().table_portfolio, filter_expression=Attr("styleId").exists())
     portfolio = sorted(items, key=lambda value: value.get("createdAt", ""), reverse=True)
-    return ok({"portfolio": portfolio, "nextCursor": next_cursor})
+    return ok({"portfolio": portfolio, "nextCursor": None})
 
 
 def get_reviews_admin(event: dict) -> dict:
-    params = query_params(event)
     # Exclude aggregate/stats rows that share the table (e.g. reviewId = 'AGGREGATE#...')
-    items, next_cursor = scan_items(
+    items = scan_all_items(
         get_config().table_reviews,
         filter_expression=Attr("reviewId").exists() & Attr("clientName").exists(),
-        limit=min(int(params.get("limit", "50")), 100),
-        cursor=params.get("cursor"),
     )
     reviews = sorted(items, key=lambda value: value.get("createdAt", ""), reverse=True)
-    return ok({"reviews": reviews, "nextCursor": next_cursor})
+    return ok({"reviews": reviews, "nextCursor": None})
 
 
 def get_business_settings_admin(event: dict) -> dict:
@@ -466,7 +516,11 @@ def _trigger_stripe_refund(appointment_id: str, charge_id: str, idempotency_suff
         {"depositStatus": "refund_pending", "refundStatus": "pending", "updatedAt": now},
     )
     try:
-        create_refund(charge_id, idempotency_key=f"{appointment_id}-{idempotency_suffix}")
+        create_refund(
+            charge_id,
+            idempotency_key=f"{appointment_id}-{idempotency_suffix}",
+            appointment_id=appointment_id,
+        )
     except Exception:
         update_item(
             config.table_appointments,
@@ -904,18 +958,13 @@ def get_contact_messages(event: dict) -> dict:
     filter_expression = Attr("messageId").exists()
     if params.get("read") in {"true", "false"}:
         filter_expression = filter_expression & bool_filter("read", params["read"] == "true")
-    items, next_cursor = scan_items(
-        get_config().table_contact_messages,
-        filter_expression=filter_expression,
-        limit=min(int(params.get("limit", "25")), 50),
-        cursor=params.get("cursor"),
-    )
+    items = scan_all_items(get_config().table_contact_messages, filter_expression=filter_expression)
     messages = []
     for item in sorted(items, key=lambda value: value.get("createdAt", ""), reverse=True):
         item["email"] = decrypt_pii(item.get("email"))
         item["phone"] = decrypt_pii(item.get("phone"))
         messages.append(item)
-    return ok({"messages": messages, "nextCursor": next_cursor})
+    return ok({"messages": messages, "nextCursor": None})
 
 
 def patch_contact_message(event: dict, admin_user_id: str) -> dict:

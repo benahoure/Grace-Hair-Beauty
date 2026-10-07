@@ -140,14 +140,11 @@ def _mark_refund_failed(appointment_id: str, failure_reason: str) -> None:
 def _mark_refund_failed_by_charge(charge_id: str, failure_reason: str) -> None:
     from boto3.dynamodb.conditions import Attr
 
-    from common.dynamo import scan_items
+    from common.dynamo import scan_all_items
 
     config = get_config()
-    items, _ = scan_items(
-        config.table_appointments,
-        filter_expression=Attr("stripeChargeId").eq(charge_id),
-        limit=5,
-    )
+    # Fallback for refunds created without appointmentId metadata; must read every page to find the row.
+    items = scan_all_items(config.table_appointments, filter_expression=Attr("stripeChargeId").eq(charge_id))
     for item in items:
         _mark_refund_failed(item["appointmentId"], failure_reason)
 
@@ -197,14 +194,11 @@ def _finalize_refund_by_charge(charge_id: str) -> None:
     """Fallback: look up appointment by stripeChargeId when appointmentId is not in refund metadata."""
     from boto3.dynamodb.conditions import Attr
 
-    from common.dynamo import scan_items
+    from common.dynamo import scan_all_items
 
     config = get_config()
-    items, _ = scan_items(
-        config.table_appointments,
-        filter_expression=Attr("stripeChargeId").eq(charge_id),
-        limit=5,
-    )
+    # Fallback for refunds created without appointmentId metadata; must read every page to find the row.
+    items = scan_all_items(config.table_appointments, filter_expression=Attr("stripeChargeId").eq(charge_id))
     for item in items:
         _finalize_refund(item["appointmentId"])
 

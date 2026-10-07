@@ -129,7 +129,7 @@ def test_public_reviews_return_approved_only(monkeypatch, lambda_context) -> Non
 
     monkeypatch.setattr(
         handler,
-        "scan_items",
+        "query_index",
         lambda *args, **kwargs: (
             [
                 {
@@ -183,6 +183,7 @@ def test_public_reviews_self_heal_aggregate_when_missing(monkeypatch, lambda_con
 
     stored: list[dict] = []
 
+    monkeypatch.setattr(handler, "query_index", lambda *a, **kw: ([review_row], None))
     monkeypatch.setattr(handler, "scan_items", lambda *a, **kw: ([review_row], None))
     monkeypatch.setattr(handler, "get_item", lambda *a, **kw: None)
     monkeypatch.setattr(handler, "put_item", lambda _table, item: stored.append(item))
@@ -225,6 +226,7 @@ def test_public_reviews_self_heal_aggregate_excludes_aggregate_row(monkeypatch, 
 
     stored: list[dict] = []
 
+    monkeypatch.setattr(handler, "query_index", lambda *a, **kw: (rows[:1], None))
     monkeypatch.setattr(handler, "scan_items", lambda *a, **kw: (rows, None))
     monkeypatch.setattr(handler, "get_item", lambda *a, **kw: None)
     monkeypatch.setattr(handler, "put_item", lambda _table, item: stored.append(item))

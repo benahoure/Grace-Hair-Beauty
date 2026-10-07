@@ -55,9 +55,10 @@ def retrieve_payment_intent(intent_id: str) -> stripe.PaymentIntent:
     return get_stripe().payment_intents.retrieve(intent_id)
 
 
-def create_refund(charge_id: str, idempotency_key: str) -> stripe.Refund:
+def create_refund(charge_id: str, idempotency_key: str, appointment_id: str) -> stripe.Refund:
+    # appointmentId in metadata lets the refund webhooks find the appointment by key instead of scanning.
     return get_stripe().refunds.create(
-        params={"charge": charge_id},
+        params={"charge": charge_id, "metadata": {"appointmentId": appointment_id}},
         options={"idempotency_key": idempotency_key},
     )
 

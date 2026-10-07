@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Literal
+from typing import Literal, get_args
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
@@ -15,6 +15,10 @@ DEFAULT_DURATION_MINUTES = 180  # fallback for services without an explicit dura
 
 DepositStatus = Literal["paid", "refund_pending", "refunded", "forfeited", "transferred", "applied_to_balance"]
 AppointmentStatus = Literal["pending_payment", "pending", "confirmed", "cancelled", "completed", "no_show"]
+
+ALL_STATUSES: tuple[str, ...] = get_args(AppointmentStatus)
+# Statuses that occupy a braider for the capacity check.
+ACTIVE_STATUSES: tuple[str, ...] = ("pending_payment", "pending", "confirmed")
 
 
 def _salon_today() -> dt.date:
